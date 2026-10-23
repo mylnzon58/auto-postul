@@ -303,6 +303,9 @@ async def prepare_job(
     job = session.get(JobPosting, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Oferta no encontrada.")
+    if not _linkedin_session_present(get_settings()):
+        _flash(request, "Primero iniciá sesión en LinkedIn desde Ajustes.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
     if job.apply_type != "easy_apply":
         _flash(request, "Esta oferta no es Easy Apply. No se prepara envío automático.", "warning")
         return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
@@ -630,6 +633,9 @@ async def delete_search(
 async def action_scan(request: Request, session: Session = Depends(get_db)) -> RedirectResponse:
     await _csrf(request)
     settings = get_settings()
+    if not _linkedin_session_present(settings):
+        _flash(request, "Primero iniciá sesión en LinkedIn desde Ajustes.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
     if _scan_used_today(session) >= settings.daily_scan_limit:
         _flash(request, "Límite diario de escaneos alcanzado.", "warning")
         return RedirectResponse(url="/", status_code=303)

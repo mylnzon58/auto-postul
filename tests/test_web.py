@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, select
 
@@ -51,7 +52,8 @@ def test_create_search(client: TestClient, csrf: str) -> None:
         assert row.min_score == 70
 
 
-def test_scan_enqueues_task(client: TestClient, csrf: str) -> None:
+def test_scan_enqueues_task(client: TestClient, csrf: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("auto_postul.web.routes._linkedin_session_present", lambda _settings: True)
     with session_scope() as session:
         session.execute(delete(AutomationRun))
 
