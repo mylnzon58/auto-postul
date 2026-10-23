@@ -1,0 +1,1 @@
+"""Worker local de automatizaciones."""

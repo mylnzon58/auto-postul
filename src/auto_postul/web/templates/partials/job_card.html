@@ -1,0 +1,51 @@
+<article class="job-card">
+  <div class="job-card-top">
+    <div>
+      <a class="job-title" href="/jobs/{{ job.id }}">{{ job.title or "Oferta sin título" }}</a>
+      <p class="job-company">{{ job.company_name or "Empresa sin dato" }}{% if job.location %} · {{ job.location }}{% endif %}</p>
+    </div>
+    {% if score %}
+      <div class="score-pill {{ score.band|band_class }}" aria-label="Afinidad {{ score.total }} de 100">
+        <strong>{{ score.total }}</strong><span>/100</span>
+      </div>
+    {% else %}
+      <div class="score-pill band-none"><strong>—</strong><span>sin score</span></div>
+    {% endif %}
+  </div>
+
+  <div class="job-meta">
+    <span class="badge">{{ job.apply_type }}</span>
+    <span class="badge">{{ job.work_mode }}</span>
+    {% if job.job_family %}<span class="badge">{{ job.job_family }}</span>{% endif %}
+    {% if job.id in applications %}
+      <span class="badge status-{{ applications[job.id].status }}">{{ applications[job.id].status|status_label }}</span>
+    {% endif %}
+  </div>
+
+  {% if score %}
+    <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ score.total }}">
+      <span class="meter-fill {{ score.band|band_class }}" style="width: {{ score.total }}%"></span>
+    </div>
+    <div class="job-reasons">
+      {% if score.matched_skills %}
+        <p><span class="label-inline">Coincide:</span> {{ score.matched_skills[:4]|join(", ") }}</p>
+      {% endif %}
+      {% if score.missing_skills %}
+        <p><span class="label-inline">Falta:</span> {{ score.missing_skills[:3]|join(", ") }}</p>
+      {% endif %}
+      {% if score.risks %}
+        <p class="risk-line">{{ score.risks[0] }}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div class="card-actions">
+    <a class="button button-secondary button-small" href="/jobs/{{ job.id }}">Ver detalle</a>
+    {% if job.apply_type == "easy_apply" %}
+      <form method="post" action="/jobs/{{ job.id }}/prepare" class="inline-form">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button class="button button-primary button-small" type="submit">Preparar</button>
+      </form>
+    {% endif %}
+  </div>
+</article>

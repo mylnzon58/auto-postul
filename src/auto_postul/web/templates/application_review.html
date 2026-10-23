@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Revisión · {{ job.title if job else "Postulación" }}{% endblock %}
+{% block eyebrow %}Revisión humana{% endblock %}
+{% block page_title %}{{ job.title if job else "Postulación" }}{% endblock %}
+{% block actions %}
+  {% if job %}<a class="button button-secondary" href="/jobs/{{ job.id }}">Ver oferta</a>{% endif %}
+{% endblock %}
+
+{% block content %}
+  <div class="detail-layout">
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">{{ job.company_name if job else "" }}</p>
+            <h2>Estado: {{ application.status|status_label }}</h2>
+          </div>
+          {% if score %}
+            <div class="score-block {{ score.band|band_class }}">
+              <strong>{{ score.total }}</strong><span>{{ score.band|band_label }}</span>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if dry_run %}
+          <div class="safety-note">
+            <strong>Modo seguro activo.</strong> La preparación y el envío simulado no hacen clic en “Enviar solicitud”.
+            Para un envío real, configurá <code>APPLY_DRY_RUN=false</code> y <code>APPLY_LIVE_SUBMIT=true</code> en tu entorno local.
+          </div>
+        {% endif %}
+
+        {% if application.status == 'submission_unknown' %}
+          <div class="flash flash-warning">
+            El envío quedó en estado desconocido. Revisá LinkedIn manualmente. El sistema no reintenta para evitar duplicados.
+          </div>
+        {% endif %}
+
+        {% if unresolved %}
+          <div class="flash flash-warning">
+            Faltan {{ unresolved|length }} campos obligatorios. Completá el banco de respuestas y reintentá la preparación.
+          </div>
+          <a class="button button-secondary" href="/profile#respuestas">Editar banco de respuestas</a>
+        {% endif %}
+
+        {% if application.error %}
+          <div class="flash flash-error">{{ application.error }}</div>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Campos del formulario</h2></div>
+        {% if fields %}
+          {% for step, step_fields in fields|groupby('step') %}
+            <h3 class="step-title">Paso {{ step }}</h3>
+            <div class="table-wrap">
+              <table class="data-table compact">
+                <thead>
+                  <tr><th>Campo</th><th>Valor</th><th>Fuente</th><th>Estado</th></tr>
+                </thead>
+                <tbody>
+                  {% for field in step_fields %}
+                    <tr>
+                      <td>{{ field.label or field.field_key }}</td>
+                      <td class="mono">{{ field.value or "—" }}</td>
+                      <td><span class="badge">{{ field.source or "—" }}</span></td>
+                      <td>
+                        {% if field.status == 'resolved' %}
+                          <span class="badge status-done">Resuelto</span>
+                        {% elif field.status == 'pending' %}
+                          <span class="badge status-needs_input">Falta</span>
+                        {% else %}
+                          <span class="badge">{{ field.status }}</span>
+                        {% endif %}
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endfor %}
+        {% else %}
+          <p class="muted">Todavía no hay campos capturados. Ejecutá la preparación.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Eventos</h2></div>
+        {% if events %}
+          <ol class="timeline">
+            {% for event in events %}
+              <li>
+                <strong>{{ event.event_type }}</strong>
+                <span class="muted small">{{ event.created_at|dt }}</span>
+                <p>{{ event.message }}</p>
+              </li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="muted">Sin eventos.</p>
+        {% endif %}
+      </section>
+    </div>
+
+    <aside class="stack">
+      <section class="panel panel-sticky">
+        <div class="panel-head"><h2>Confirmar envío</h2></div>
+        {% if application.status == 'ready_for_review' %}
+          <p class="muted small">Escribí <strong>ENVIAR</strong> para confirmar. Esta acción no se puede deshacer.</p>
+          <form method="post" action="/applications/{{ application.id }}/submit" class="stack-sm" data-confirm="¿Confirmás el envío de esta postulación?">
+            <input type="hidden" name="_csrf" value="{{ csrf }}">
+            <label>
+              <span>Confirmación</span>
+              <input type="text" name="confirmation" autocomplete="off" placeholder="ENVIAR" required>
+            </label>
+            <button class="button button-primary full" type="submit">Enviar postulación</button>
+          </form>
+          {% if not live_submit %}
+            <p class="muted small">Con la configuración actual, el worker registrará un dry-run y no enviará nada.</p>
+          {% endif %}
+        {% else %}
+          <p class="muted">La postulación no está lista para envío. Revisá el estado y los campos.</p>
+        {% endif %}
+
+        {% if application.status in ['needs_input', 'failed', 'ready_for_review'] and job %}
+          <form method="post" action="/jobs/{{ job.id }}/prepare" class="stack-sm">
+            <input type="hidden" name="_csrf" value="{{ csrf }}">
+            <button class="button button-secondary full" type="submit">Reintentar preparación</button>
+          </form>
+        {% endif %}
+        <a class="text-link" href="/applications">Volver a postulaciones</a>
+      </section>
+
+      {% if artifacts %}
+        <section class="panel">
+          <div class="panel-head"><h2>Evidencia</h2></div>
+          <div class="artifact-list">
+            {% for artifact in artifacts %}
+              {% if artifact.kind == 'screenshot' %}
+                <a href="/artifacts/{{ application.id }}/{{ artifact.path.split('/')[-1] }}" target="_blank" rel="noreferrer">
+                  <img src="/artifacts/{{ application.id }}/{{ artifact.path.split('/')[-1] }}" alt="Captura de la postulación">
+                </a>
+              {% else %}
+                <a class="text-link" href="/artifacts/{{ application.id }}/{{ artifact.path.split('/')[-1] }}">{{ artifact.kind }}</a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </section>
+      {% endif %}
+
+      {% if score %}
+        <section class="panel">
+          <div class="panel-head"><h2>Resumen de afinidad</h2></div>
+          <p class="summary-line">{{ score.summary }}</p>
+          {% if score.risks %}
+            <ul class="plain-list">{% for risk in score.risks %}<li>{{ risk }}</li>{% endfor %}</ul>
+          {% endif %}
+        </section>
+      {% endif %}
+    </aside>
+  </div>
+{% endblock %}

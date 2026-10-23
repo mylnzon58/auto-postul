@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='app.css') }}">
+  <script src="{{ url_for('static', path='vendor/htmx.min.js') }}" defer></script>
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark">AP</span>
+        <span>
+          <strong>AutoPostul</strong>
+          <small>Postulaciones asistidas</small>
+        </span>
+      </a>
+
+      <nav class="nav" aria-label="Principal">
+        <a class="nav-item {% if nav == 'dashboard' %}is-active{% endif %}" href="/">Resumen</a>
+        <a class="nav-item {% if nav == 'jobs' %}is-active{% endif %}" href="/jobs">Ofertas</a>
+        <a class="nav-item {% if nav == 'applications' %}is-active{% endif %}" href="/applications">Postulaciones</a>
+        <a class="nav-item {% if nav == 'profile' %}is-active{% endif %}" href="/profile">Perfil y CV</a>
+        <a class="nav-item {% if nav == 'candidates' %}is-active{% endif %}" href="/candidates">Perfiles</a>
+        <a class="nav-item {% if nav == 'searches' %}is-active{% endif %}" href="/searches">Búsquedas</a>
+        <a class="nav-item {% if nav == 'activity' %}is-active{% endif %}" href="/activity">Actividad</a>
+        <a class="nav-item {% if nav == 'settings' %}is-active{% endif %}" href="/settings">Ajustes</a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-line">
+          <span class="status-dot {% if linkedin_session|default(false) %}is-on{% endif %}"></span>
+          <span>LinkedIn {% if linkedin_session|default(false) %}conectado{% else %}sin sesión{% endif %}</span>
+        </div>
+        <div class="status-line">
+          <span class="status-dot {% if gemini_enabled %}is-on{% endif %}"></span>
+          <span>Gemini {% if gemini_enabled %}listo{% else %}sin clave{% endif %}</span>
+        </div>
+        <div class="status-line">
+          <span class="status-dot {% if dry_run %}is-warn{% else %}is-danger{% endif %}"></span>
+          <span>{% if dry_run %}Modo seguro{% else %}Envío live{% endif %}</span>
+        </div>
+        <p class="sidebar-note">Local. Tus datos no se publican.</p>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">{% block eyebrow %}Panel local{% endblock %}</p>
+          <h1>{% block page_title %}Resumen{% endblock %}</h1>
+        </div>
+        <div class="topbar-actions">{% block actions %}{% endblock %}</div>
+      </header>
+
+      {% if flash %}
+        <div class="flash flash-{{ flash.kind }}" role="status">{{ flash.message }}</div>
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

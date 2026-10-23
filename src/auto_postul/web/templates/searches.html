@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Búsquedas · {{ app_name }}{% endblock %}
+{% block eyebrow %}Descubrimiento{% endblock %}
+{% block page_title %}Búsquedas{% endblock %}
+
+{% block content %}
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head"><h2>Tus búsquedas</h2></div>
+      {% if searches %}
+        <ul class="search-list">
+          {% for search in searches %}
+            <li>
+              <div>
+                <strong>{{ search.name }}</strong>
+                <p class="muted small">{{ search.keywords }} · {{ search.location }} · {{ search.work_type }}</p>
+                <p class="muted small">Mínimo {{ search.min_score }} · {{ search.max_pages }} página(s) · {{ 'Activa' if search.enabled else 'Pausada' }}</p>
+              </div>
+              <div class="actions-row">
+                <form method="post" action="/searches/{{ search.id }}/toggle" class="inline-form">
+                  <input type="hidden" name="_csrf" value="{{ csrf }}">
+                  <button class="button button-secondary button-small" type="submit">{{ 'Pausar' if search.enabled else 'Activar' }}</button>
+                </form>
+                <form method="post" action="/searches/{{ search.id }}/delete" class="inline-form" data-confirm="¿Eliminar esta búsqueda?">
+                  <input type="hidden" name="_csrf" value="{{ csrf }}">
+                  <button class="button button-danger button-small" type="submit">Eliminar</button>
+                </form>
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No hay búsquedas. Creá una para empezar.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Nueva búsqueda</h2></div>
+      <form method="post" action="/searches" class="stack-sm">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label><span>Nombre</span><input name="name" required placeholder="Ej: AI Product Engineer"></label>
+        <label><span>Palabras clave</span><input name="keywords" required placeholder="AI Product Engineer"></label>
+        <label><span>Ubicación</span><input name="location" value="Argentina"></label>
+        <div class="form-grid">
+          <label><span>Modalidad</span>
+            <select name="work_type">
+              <option value="remote">Remoto</option>
+              <option value="hybrid">Híbrido</option>
+              <option value="on_site">Presencial</option>
+            </select>
+          </label>
+          <label><span>Fecha</span>
+            <select name="date_posted">
+              <option value="past_week">Última semana</option>
+              <option value="past_month">Último mes</option>
+              <option value="past_24_hours">Últimas 24 horas</option>
+            </select>
+          </label>
+        </div>
+        <label><span>Afinidad mínima</span><input type="number" name="min_score" value="60" min="0" max="100"></label>
+        <p class="muted small">Easy Apply siempre activo en esta versión.</p>
+        <button class="button button-primary" type="submit">Crear búsqueda</button>
+      </form>
+    </section>
+  </div>
+{% endblock %}

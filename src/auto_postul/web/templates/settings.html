@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Ajustes · {{ app_name }}{% endblock %}
+{% block eyebrow %}Configuración local{% endblock %}
+{% block page_title %}Ajustes{% endblock %}
+
+{% block content %}
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Sesión de navegador</p>
+          <h2>LinkedIn</h2>
+        </div>
+        <span class="badge {% if profile_present %}status-done{% else %}status-needs_input{% endif %}">
+          {{ 'Conectado' if profile_present else 'Sin sesión' }}
+        </span>
+      </div>
+      <p class="muted">El login se hace una vez en una ventana visible. La app no guarda tu contraseña.</p>
+      <form method="post" action="/settings/login-linkedin" class="stack-sm" data-confirm="Se abrirá una ventana de Chromium. Completá el login de LinkedIn.">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button class="button button-primary" type="submit">Abrir login de LinkedIn</button>
+      </form>
+      <p class="muted small">Perfil: <span class="mono">{{ settings.linkedin_profile_dir }}</span></p>
+      {% if active %}
+        <div class="safety-note">
+          Hay una tarea activa: <strong>{{ active.kind|task_label }}</strong> ({{ active.status|status_label }}).
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Configuración efectiva</h2></div>
+      <dl class="data-list">
+        <dt>Gemini</dt><dd>{{ 'Configurado' if gemini_enabled else 'Sin clave' }} · {{ settings.gemini_model }}</dd>
+        <dt>Modo seguro</dt><dd>{{ 'Activo (no envía)' if dry_run else 'Desactivado' }}</dd>
+        <dt>Envío live</dt><dd>{{ 'Habilitado' if live_submit else 'Bloqueado' }}</dd>
+        <dt>Escaneos/día</dt><dd>{{ settings.daily_scan_limit }}</dd>
+        <dt>Ofertas/día</dt><dd>{{ settings.daily_job_detail_limit }}</dd>
+        <dt>Postulaciones/día</dt><dd>{{ settings.daily_apply_limit }}</dd>
+        <dt>Datos locales</dt><dd class="mono">{{ settings.data_dir }}</dd>
+      </dl>
+      <p class="muted small">Los límites y el modo de envío se cambian en <code>.env</code>. Ningún secreto se muestra en el panel.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Qué hace y qué no hace</h2></div>
+      <ul class="plain-list">
+        <li>Lee ofertas Easy Apply a través del MCP de LinkedIn.</li>
+        <li>Completa formularios con tu perfil y respuestas verificadas.</li>
+        <li>Se detiene ante campos desconocidos, CAPTCHA o verificación.</li>
+        <li>No modifica tu CV original.</li>
+        <li>No inventa experiencia, skills ni respuestas.</li>
+        <li>No envía nada sin la confirmación <strong>ENVIAR</strong>.</li>
+        <li>No hace scraping masivo ni envía mensajes.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Riesgo y responsabilidad</h2></div>
+      <p class="muted">LinkedIn no autoriza oficialmente este tipo de automatización. El modo asistido y los límites bajos reducen el riesgo, pero no lo eliminan. La cuenta y la decisión de uso son tuyas.</p>
+      <p class="muted small">Ante CAPTCHA, 2FA, checkpoint o rate limit, la app debe detenerse. No intentes evadir esos controles.</p>
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title or "Oferta" }} · {{ app_name }}{% endblock %}
+{% block eyebrow %}Detalle de oferta{% endblock %}
+{% block page_title %}{{ job.title or "Oferta sin título" }}{% endblock %}
+{% block actions %}
+  <a class="button button-secondary" href="{{ job.url }}" target="_blank" rel="noreferrer">Abrir en LinkedIn</a>
+{% endblock %}
+
+{% block content %}
+  <div class="detail-layout">
+    <div class="stack">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <p class="eyebrow">{{ job.company_name or "Empresa sin dato" }}</p>
+            <h2>{{ job.title or "Oferta sin título" }}</h2>
+            <p class="muted">{{ job.location or "Ubicación sin dato" }} · {{ job.work_mode }} · {{ job.apply_type }}</p>
+          </div>
+          {% if score %}
+            <div class="score-block {{ score.band|band_class }}">
+              <strong>{{ score.total }}</strong>
+              <span>{{ score.band|band_label }}</span>
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="job-meta">
+          {% if job.seniority %}<span class="badge">{{ job.seniority }}</span>{% endif %}
+          {% if job.job_family %}<span class="badge">{{ job.job_family }}</span>{% endif %}
+          {% if job.salary_min %}
+            <span class="badge">USD {{ job.salary_min|int }}–{{ job.salary_max|int }}</span>
+          {% endif %}
+        </div>
+
+        {% if skills %}
+          <div class="chip-row">
+            {% for name, kind in skills %}
+              <span class="chip {% if kind == 'required' %}chip-required{% endif %}">{{ name }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </section>
+
+      {% if score %}
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow">Explicación</p>
+              <h2>Por qué puntúa así</h2>
+            </div>
+          </div>
+          <p class="summary-line">{{ score.summary }}</p>
+          <div class="component-list">
+            {% for component in score.components %}
+              <div class="component">
+                <div class="component-head">
+                  <span>{{ component.label }}</span>
+                  <strong>{{ component.points|round|int }}/{{ component.weight }}</strong>
+                </div>
+                <div class="meter meter-small" role="meter" aria-valuemin="0" aria-valuemax="{{ component.weight }}" aria-valuenow="{{ component.points|round|int }}">
+                  <span class="meter-fill {{ score.band|band_class }}" style="width: {{ (component.raw * 100)|round|int }}%"></span>
+                </div>
+                <p class="muted small">{{ component.evidence }}</p>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="risk-grid">
+            <div>
+              <h3>Coincidencias</h3>
+              {% if score.matched_skills %}
+                <ul class="plain-list">{% for item in score.matched_skills %}<li>{{ item }}</li>{% endfor %}</ul>
+              {% else %}<p class="muted">Sin coincidencias detectadas.</p>{% endif %}
+            </div>
+            <div>
+              <h3>Faltantes</h3>
+              {% if score.missing_skills %}
+                <ul class="plain-list">{% for item in score.missing_skills %}<li>{{ item }}</li>{% endfor %}</ul>
+              {% else %}<p class="muted">No se detectaron faltantes obligatorios.</p>{% endif %}
+            </div>
+            <div>
+              <h3>Riesgos</h3>
+              {% if score.risks %}
+                <ul class="plain-list">{% for item in score.risks %}<li>{{ item }}</li>{% endfor %}</ul>
+              {% else %}<p class="muted">Sin riesgos adicionales.</p>{% endif %}
+            </div>
+          </div>
+        </section>
+      {% endif %}
+
+      <section class="panel">
+        <div class="panel-head"><h2>Descripción</h2></div>
+        <div class="prose">{{ job.description or "Sin descripción capturada." }}</div>
+      </section>
+
+      {% if job.requirements %}
+        <section class="panel">
+          <div class="panel-head"><h2>Requisitos</h2></div>
+          <div class="prose">{{ job.requirements }}</div>
+        </section>
+      {% endif %}
+    </div>
+
+    <aside class="stack">
+      <section class="panel panel-sticky">
+        <div class="panel-head"><h2>Acción</h2></div>
+        {% if application %}
+          <p class="muted">Estado actual: <strong>{{ application.status|status_label }}</strong></p>
+          <a class="button button-secondary full" href="/applications/{{ application.id }}">Ver postulación</a>
+        {% endif %}
+        {% if job.apply_type == "easy_apply" %}
+          <form method="post" action="/jobs/{{ job.id }}/prepare" class="stack-sm">
+            <input type="hidden" name="_csrf" value="{{ csrf }}">
+            <button class="button button-primary full" type="submit" data-confirm="Se abrirá un navegador visible y se completará el formulario. No se enviará nada sin tu confirmación.">Preparar Easy Apply</button>
+          </form>
+          <p class="muted small">La preparación se ejecuta en el worker. Después vas a poder revisar cada campo.</p>
+        {% else %}
+          <p class="muted">Esta oferta no es Easy Apply. El envío automático está deshabilitado.</p>
+        {% endif %}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head"><h2>Datos de control</h2></div>
+        <dl class="data-list">
+          <dt>ID LinkedIn</dt><dd>{{ job.external_id }}</dd>
+          <dt>Leída</dt><dd>{{ job.created_at|dt }}</dd>
+          <dt>Familia</dt><dd>{{ job.job_family or "—" }}</dd>
+          <dt>Fingerprint</dt><dd class="mono">{{ job.fingerprint[:16] }}…</dd>
+        </dl>
+      </section>
+    </aside>
+  </div>
+{% endblock %}

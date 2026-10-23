@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Actividad · {{ app_name }}{% endblock %}
+{% block eyebrow %}Auditoría local{% endblock %}
+{% block page_title %}Actividad{% endblock %}
+{% block actions %}
+  <form method="post" action="/actions/scan" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="button button-primary" type="submit">Nuevo escaneo</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-head"><h2>Ejecuciones</h2></div>
+    <div class="table-wrap">
+      <table class="data-table compact">
+        <thead><tr><th>Tipo</th><th>Estado</th><th>Inicio</th><th>Fin</th><th>Resultado / error</th></tr></thead>
+        <tbody>
+          {% for run in runs %}
+            <tr>
+              <td>{{ run.kind|task_label }}</td>
+              <td><span class="badge status-{{ run.status }}">{{ run.status|status_label }}</span></td>
+              <td class="muted small">{{ run.started_at|dt }}</td>
+              <td class="muted small">{{ run.finished_at|dt }}</td>
+              <td class="small">
+                {% if run.error %}<span class="text-danger">{{ run.error[:240] }}</span>{% endif %}
+                {% if run.result %}<span class="mono">{{ run.result }}</span>{% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="5" class="muted">Sin ejecuciones.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Eventos de postulación</h2></div>
+    {% if events %}
+      <ol class="timeline">
+        {% for event in events %}
+          {% set application = applications.get(event.application_id) %}
+          <li>
+            <div class="timeline-head">
+              <strong>{{ event.event_type }}</strong>
+              <span class="muted small">{{ event.created_at|dt }}</span>
+            </div>
+            <p>{{ event.message }}</p>
+            {% if application %}<a class="text-link small" href="/applications/{{ application.id }}">Ver postulación</a>{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="muted">Sin eventos.</p>
+    {% endif %}
+  </section>
+{% endblock %}

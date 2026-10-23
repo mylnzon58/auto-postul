@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Ofertas · {{ app_name }}{% endblock %}
+{% block eyebrow %}Descubrimiento{% endblock %}
+{% block page_title %}Ofertas{% endblock %}
+{% block actions %}
+  <form method="post" action="/actions/scan" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="button button-primary" type="submit">Escanear ofertas</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <form class="filters" method="get" action="/jobs">
+      <label>
+        <span>Buscar</span>
+        <input type="search" name="q" value="{{ q }}" placeholder="Título, empresa o descripción">
+      </label>
+      <label>
+        <span>Afinidad</span>
+        <select name="band">
+          <option value="">Todas</option>
+          <option value="muy_alta" {% if band == 'muy_alta' %}selected{% endif %}>Muy alta</option>
+          <option value="alta" {% if band == 'alta' %}selected{% endif %}>Alta</option>
+          <option value="media" {% if band == 'media' %}selected{% endif %}>Media</option>
+          <option value="media_baja" {% if band == 'media_baja' %}selected{% endif %}>Media-baja</option>
+          <option value="baja" {% if band == 'baja' %}selected{% endif %}>Baja</option>
+        </select>
+      </label>
+      <label>
+        <span>Postulación</span>
+        <select name="apply_type">
+          <option value="">Todas</option>
+          <option value="easy_apply" {% if apply_type == 'easy_apply' %}selected{% endif %}>Easy Apply</option>
+          <option value="external" {% if apply_type == 'external' %}selected{% endif %}>Externa</option>
+          <option value="applied" {% if apply_type == 'applied' %}selected{% endif %}>Ya aplicada</option>
+        </select>
+      </label>
+      <div class="filters-actions">
+        <button class="button button-secondary" type="submit">Filtrar</button>
+        <a class="text-link" href="/jobs">Limpiar</a>
+      </div>
+    </form>
+  </section>
+
+  {% if jobs %}
+    <div class="job-grid">
+      {% for job in jobs %}
+        {% set score = scores.get(job.id) %}
+        {% include "partials/job_card.html" %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <section class="panel empty">
+      <h2>No hay ofertas con esos filtros</h2>
+      <p class="muted">Probá limpiar los filtros o ejecutar un escaneo nuevo.</p>
+      <a class="button button-secondary" href="/jobs">Limpiar filtros</a>
+    </section>
+  {% endif %}
+{% endblock %}

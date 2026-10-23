@@ -1,0 +1,23 @@
+ANA PEREZ
+Backend Engineer | Python
+Buenos Aires, Argentina · Trabajo remoto
+ana@example.com · +54 11 5555 0000
+linkedin.com/in/ana-perez · github.com/anaperez
+
+PERFIL PROFESIONAL
+Desarrolladora backend con más de 6 años de experiencia en Python, PostgreSQL y Docker.
+
+EXPERIENCIA PROFESIONAL
+Backend Developer
+Acme SA | 01/2021 – Actualidad
+APIs REST con Python y PostgreSQL.
+
+Data Engineer
+Beta LLC | 2018 – 2020
+Pipelines de datos y Docker.
+
+FORMACIÓN Y CERTIFICACIONES
+Ingeniería en Sistemas — Universidad | 2015 – 2020
+
+IDIOMAS
+Español: nativo · Inglés: B2

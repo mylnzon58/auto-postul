@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Ingresar · {{ app_name }}{% endblock %}
+{% block eyebrow %}Acceso local{% endblock %}
+{% block page_title %}Ingresar{% endblock %}
+
+{% block content %}
+  <section class="panel narrow">
+    <p class="muted">Este panel está protegido por una contraseña local.</p>
+    <form method="post" action="/login" class="stack-sm">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <label>
+        <span>Contraseña</span>
+        <input type="password" name="password" required autofocus>
+      </label>
+      <button class="button button-primary" type="submit">Entrar</button>
+    </form>
+  </section>
+{% endblock %}

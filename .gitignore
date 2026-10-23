@@ -1,0 +1,35 @@
+# Secretos y datos personales
+.env
+.env.*
+!.env.example
+*.pdf
+!docs/samples/*.pdf
+*.sqlite
+*.sqlite3
+*.db
+*.db-shm
+*.db-wal
+data/
+artifacts/
+capturas/
+logs/
+.linkedin-mcp/
+linkedin-profile/
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Editores y sistema
+.DS_Store
+.idea/
+.vscode/

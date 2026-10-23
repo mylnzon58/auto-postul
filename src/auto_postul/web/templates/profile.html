@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Perfil y CV · {{ app_name }}{% endblock %}
+{% block eyebrow %}Fuente de verdad{% endblock %}
+{% block page_title %}Perfil y CV{% endblock %}
+{% block actions %}
+  <a class="button button-secondary" href="/candidates">Cambiar o crear perfil</a>
+{% endblock %}
+
+{% block content %}
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Documento original</p>
+          <h2>CV importado</h2>
+        </div>
+      </div>
+      <p class="muted">El PDF original no se modifica. Solo se extraen datos para revisión.</p>
+      <form method="post" action="/profile/import" enctype="multipart/form-data" class="stack-sm">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <input type="file" name="file" accept="application/pdf" aria-label="Subir CV en PDF">
+        <button class="button button-primary" type="submit">Importar o reemplazar CV</button>
+      </form>
+      {% if documents %}
+        <ul class="document-list">
+          {% for document in documents %}
+            <li>
+              <div>
+                <strong>{{ document.filename }}</strong>
+                <p class="muted small">SHA {{ document.sha256[:12] }} · {{ document.created_at|dt }}</p>
+              </div>
+              {% if document.is_primary %}<span class="badge status-done">Principal</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Todavía no hay CV importado.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Datos verificables</p>
+          <h2>Identidad y contacto</h2>
+        </div>
+      </div>
+      <form method="post" action="/profile" class="form-grid">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label><span>Nombre completo</span><input name="full_name" value="{{ candidate.full_name }}"></label>
+        <label><span>Email</span><input type="email" name="email" value="{{ candidate.email }}"></label>
+        <label><span>Teléfono</span><input name="phone" value="{{ candidate.phone }}"></label>
+        <label><span>Ubicación</span><input name="location" value="{{ candidate.location }}"></label>
+        <label class="span-2"><span>Headline</span><input name="headline" value="{{ candidate.headline }}"></label>
+        <label class="span-2"><span>Resumen</span><textarea name="summary" rows="4">{{ candidate.summary }}</textarea></label>
+        <label><span>LinkedIn</span><input name="linkedin_url" value="{{ candidate.linkedin_url }}"></label>
+        <label><span>GitHub</span><input name="github_url" value="{{ candidate.github_url }}"></label>
+        <label><span>Portfolio</span><input name="portfolio_url" value="{{ candidate.portfolio_url }}"></label>
+        <label><span>Años de experiencia</span><input type="number" step="0.5" name="years_experience" value="{{ candidate.years_experience }}"></label>
+        <label><span>Nivel de inglés</span><input name="english_level" value="{{ candidate.english_level }}"></label>
+        <div class="span-2"><button class="button button-primary" type="submit">Guardar perfil</button></div>
+      </form>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Skills normalizadas</p>
+        <h2>Competencias detectadas</h2>
+      </div>
+      <span class="badge">{{ skills|length }}</span>
+    </div>
+    {% if skills %}
+      <div class="chip-row">
+        {% for name, category, evidence in skills %}
+          <span class="chip" title="{{ evidence }}">{{ name }} <small>{{ category }}</small></span>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Importá el CV para poblar skills.</p>
+    {% endif %}
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head"><h2>Experiencia</h2></div>
+      {% if experiences %}
+        <ul class="experience-list">
+          {% for item in experiences %}
+            <li>
+              <strong>{{ item.title or "Cargo sin dato" }}</strong>
+              <span class="muted">{{ item.company }}</span>
+              <p class="small">{{ item.start_date }}{% if item.end_date %} – {{ item.end_date }}{% elif item.is_current %} – Actualidad{% endif %}</p>
+              {% if item.description %}<p class="muted small">{{ item.description[:280] }}{% if item.description|length > 280 %}…{% endif %}</p>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">Sin experiencia estructurada. Podés corregirla en una próxima importación o editar el CV.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Formación e idiomas</h2></div>
+      {% if education %}
+        <ul class="experience-list">
+          {% for item in education %}
+            <li><strong>{{ item.degree }}</strong><p class="muted small">{{ item.institution }} · {{ item.status }}</p></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if languages %}
+        <div class="chip-row">
+          {% for item in languages %}<span class="chip">{{ item.name }} · {{ item.level }}</span>{% endfor %}
+        </div>
+      {% endif %}
+      {% if not education and not languages %}<p class="muted">Sin datos de formación.</p>{% endif %}
+    </section>
+  </div>
+
+  <section class="panel" id="respuestas">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Sin inventar</p>
+        <h2>Banco de respuestas</h2>
+      </div>
+      <span class="badge">Solo las marcadas como verificadas se usan</span>
+    </div>
+    <p class="muted">Estas respuestas completan formularios. Si falta un dato obligatorio, la preparación se detiene.</p>
+    <form method="post" action="/profile/answers">
+      <input type="hidden" name="_csrf" value="{{ csrf }}">
+      <div class="table-wrap">
+        <table class="data-table compact">
+          <thead><tr><th>Clave</th><th>Pregunta</th><th>Respuesta</th><th>Verificada</th></tr></thead>
+          <tbody>
+            {% for answer in answers %}
+              <tr>
+                <td class="mono">{{ answer.key }}</td>
+                <td>{{ answer.question_pattern }}</td>
+                <td><input name="answer_{{ answer.id }}" value="{{ answer.answer }}"></td>
+                <td><input type="checkbox" name="verified_{{ answer.id }}" {% if answer.verified %}checked{% endif %} aria-label="Verificada"></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="actions-row">
+        <button class="button button-primary" type="submit">Guardar respuestas</button>
+      </div>
+    </form>
+  </section>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Perfiles · {{ app_name }}{% endblock %}
+{% block eyebrow %}Multi-perfil{% endblock %}
+{% block page_title %}Perfiles{% endblock %}
+{% block actions %}
+  <a class="button button-secondary" href="/profile">Ver perfil activo</a>
+{% endblock %}
+
+{% block content %}
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Candidatos</p>
+          <h2>Perfiles guardados</h2>
+        </div>
+        <span class="badge">{{ candidates|length }}</span>
+      </div>
+      {% if candidates %}
+        <ul class="search-list">
+          {% for candidate in candidates %}
+            <li>
+              <div>
+                <strong>{{ candidate.full_name or "Perfil sin nombre" }}</strong>
+                <p class="muted small">{{ candidate.headline or "Sin headline" }} · {{ candidate.location or "Sin ubicación" }}</p>
+                {% if candidate.id == active.id %}<span class="badge status-done">Activo</span>{% endif %}
+              </div>
+              {% if candidate.id != active.id %}
+                <form method="post" action="/candidates/{{ candidate.id }}/select" class="inline-form">
+                  <input type="hidden" name="_csrf" value="{{ csrf }}">
+                  <button class="button button-secondary button-small" type="submit">Activar</button>
+                </form>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="muted">No hay perfiles.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Nuevo perfil</h2></div>
+      <p class="muted small">Cada perfil tiene su CV, sus respuestas y sus búsquedas. No se copian datos personales.</p>
+      <form method="post" action="/candidates" class="stack-sm">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label><span>Nombre completo</span><input name="full_name" required placeholder="Nombre y apellido"></label>
+        <label><span>Headline</span><input name="headline" placeholder="Ej: Backend Engineer"></label>
+        <button class="button button-primary" type="submit">Crear perfil</button>
+      </form>
+      <p class="muted small">Después de crearlo, importá su CV desde Perfil y CV.</p>
+    </section>
+  </div>
+{% endblock %}

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Resumen · {{ app_name }}{% endblock %}
+{% block eyebrow %}Estado general{% endblock %}
+{% block page_title %}Resumen{% endblock %}
+{% block actions %}
+  <form method="post" action="/actions/scan" class="inline-form">
+    <input type="hidden" name="_csrf" value="{{ csrf }}">
+    <button class="button button-primary" type="submit">Escanear ofertas</button>
+  </form>
+{% endblock %}
+
+{% block content %}
+  {% if onboarding %}
+    <section class="panel onboarding">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Primeros pasos</p>
+          <h2>Prepará tu perfil antes de automatizar</h2>
+        </div>
+      </div>
+      <ol class="steps">
+        <li><strong>Importá tu CV.</strong> El PDF original no se modifica.</li>
+        <li><strong>Revisá los datos.</strong> Corregí skills, experiencias y respuestas.</li>
+        <li><strong>Conectá LinkedIn.</strong> El login se hace en una ventana visible.</li>
+        <li><strong>Escaneá.</strong> Primero se lee; nada se envía.</li>
+      </ol>
+      <div class="actions-row">
+        <form method="post" action="/profile/import" enctype="multipart/form-data" class="inline-form">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <input type="file" name="file" accept="application/pdf" aria-label="CV en PDF">
+          <button class="button button-primary" type="submit">Importar CV</button>
+        </form>
+        <a class="button button-secondary" href="/profile">Revisar perfil</a>
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="kpi-grid" aria-label="Indicadores">
+    <article class="kpi">
+      <span class="kpi-label">Ofertas leídas</span>
+      <strong class="kpi-value">{{ total_jobs }}</strong>
+      <span class="kpi-note">{{ scan_used }}/{{ scan_limit }} escaneos hoy</span>
+    </article>
+    <article class="kpi">
+      <span class="kpi-label">Afinidad alta</span>
+      <strong class="kpi-value">{{ high }}</strong>
+      <span class="kpi-note">75 puntos o más</span>
+    </article>
+    <article class="kpi">
+      <span class="kpi-label">Listas para revisar</span>
+      <strong class="kpi-value">{{ ready }}</strong>
+      <span class="kpi-note">Requieren tu confirmación</span>
+    </article>
+    <article class="kpi">
+      <span class="kpi-label">Enviadas</span>
+      <strong class="kpi-value">{{ submitted }}</strong>
+      <span class="kpi-note">Auditadas en la base local</span>
+    </article>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Cola de afinidad</p>
+          <h2>Ofertas para mirar primero</h2>
+        </div>
+        <a class="text-link" href="/jobs">Ver todas</a>
+      </div>
+      {% if top_jobs %}
+        <div class="stack">
+          {% for job in top_jobs %}
+            {% set score = scores[job.id] %}
+            {% include "partials/job_card.html" %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="empty">
+          <p>Todavía no hay ofertas puntuadas.</p>
+          <p class="muted">Importá el CV, revisá la sesión de LinkedIn y ejecutá un escaneo.</p>
+        </div>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Actividad</p>
+          <h2>Últimas ejecuciones</h2>
+        </div>
+        <a class="text-link" href="/activity">Ver actividad</a>
+      </div>
+      {% if runs %}
+        <ul class="run-list">
+          {% for run in runs %}
+            <li>
+              <div class="run-main">
+                <strong>{{ run.kind|task_label }}</strong>
+                <span class="badge status-{{ run.status }}">{{ run.status|status_label }}</span>
+              </div>
+              <p class="muted small">{{ run.created_at|dt }}{% if run.error %} · {{ run.error[:120] }}{% endif %}</p>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="empty">
+          <p>Sin ejecuciones todavía.</p>
+          <p class="muted">El worker procesa la cola en segundo plano.</p>
+        </div>
+      {% endif %}
+      <div class="safety-note">
+        <strong>Regla del producto:</strong> primero se lee, luego se prepara y solo se envía con tu confirmación.
+      </div>
+    </section>
+  </div>
+{% endblock %}
