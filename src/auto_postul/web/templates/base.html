@@ -40,6 +40,10 @@
           <span>Gemini {% if gemini_enabled %}listo{% else %}sin clave{% endif %}</span>
         </div>
         <div class="status-line">
+          <span class="status-dot {% if worker_online|default(false) %}is-on{% else %}is-danger{% endif %}"></span>
+          <span>Worker {% if worker_online|default(false) %}activo{% else %}detenido{% endif %}</span>
+        </div>
+        <div class="status-line">
           <span class="status-dot {% if dry_run %}is-warn{% else %}is-danger{% endif %}"></span>
           <span>{% if dry_run %}Modo seguro{% else %}Envío live{% endif %}</span>
         </div>
@@ -53,7 +57,12 @@
           <p class="eyebrow">{% block eyebrow %}Panel local{% endblock %}</p>
           <h1>{% block page_title %}Resumen{% endblock %}</h1>
         </div>
-        <div class="topbar-actions">{% block actions %}{% endblock %}</div>
+        <div class="topbar-actions">
+          {% if not linkedin_session|default(false) %}
+            <a class="button button-secondary button-small" href="/settings">Conectar LinkedIn</a>
+          {% endif %}
+          {% block actions %}{% endblock %}
+        </div>
       </header>
 
       {% if flash %}

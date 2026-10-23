@@ -16,7 +16,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from auto_postul.application.queue import enqueue, find_active
+from auto_postul.application.queue import enqueue, find_active, worker_online
 from auto_postul.config import Settings, get_settings
 from auto_postul.db.models import (
     AnswerBank,
@@ -38,6 +38,7 @@ from auto_postul.db.models import (
     Skill,
 )
 from auto_postul.db.seed import create_candidate, get_or_create_candidate, set_active_candidate
+from auto_postul.db.session import session_scope
 from auto_postul.domain.enums import ApplicationStatus, TaskKind, TaskStatus
 from auto_postul.web.deps import get_db
 
@@ -138,6 +139,11 @@ def _render(request: Request, name: str, **context: Any) -> HTMLResponse:
     context.setdefault("csrf", request.session.get("csrf", ""))
     context.setdefault("nav", "dashboard")
     context.setdefault("linkedin_session", _linkedin_session_present(settings))
+    try:
+        with session_scope(settings) as status_session:
+            context.setdefault("worker_online", worker_online(status_session))
+    except Exception:
+        context.setdefault("worker_online", False)
     return templates.TemplateResponse(request=request, name=name, context=context, status_code=200)
 
 
@@ -161,12 +167,9 @@ def _application_map(session: Session, candidate_id: str) -> dict[str, Applicati
 
 
 def _linkedin_session_present(settings: Settings) -> bool:
-    parent = settings.linkedin_parent_dir
-    if (parent / "cookies.json").exists():
-        return True
-    profile = settings.linkedin_profile_dir
+    cookies = settings.linkedin_parent_dir / "cookies.json"
     try:
-        return any(profile.iterdir())
+        return cookies.is_file() and cookies.stat().st_size > 0
     except OSError:
         return False
 

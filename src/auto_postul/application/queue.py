@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import os
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auto_postul.db.base import utcnow
-from auto_postul.db.models import AutomationRun
+from auto_postul.db.models import AutomationRun, Setting
 from auto_postul.domain.enums import TaskKind, TaskStatus
 
 
@@ -59,3 +61,30 @@ def fail(session: Session, run: AutomationRun, error: str) -> None:
     run.error = error[:4000]
     run.finished_at = utcnow()
     session.flush()
+
+
+def touch_worker(session: Session) -> None:
+    """Marca que el worker está vivo para que el panel pueda mostrarlo."""
+    payload = {"at": utcnow().isoformat(), "pid": os.getpid()}
+    setting = session.get(Setting, "worker_heartbeat")
+    if setting is None:
+        session.add(Setting(key="worker_heartbeat", value=payload))
+    else:
+        setting.value = payload
+
+
+def worker_online(session: Session, *, max_age_seconds: int = 20) -> bool:
+    """Devuelve si el worker actualizó su latido recientemente."""
+    setting = session.get(Setting, "worker_heartbeat")
+    if setting is None:
+        return False
+    raw = str(setting.value.get("at", ""))
+    if not raw:
+        return False
+    try:
+        at = datetime.fromisoformat(raw)
+    except ValueError:
+        return False
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=UTC)
+    return datetime.now(UTC) - at < timedelta(seconds=max_age_seconds)

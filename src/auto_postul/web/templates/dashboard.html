@@ -10,6 +10,36 @@
 {% endblock %}
 
 {% block content %}
+  {% if not worker_online|default(false) %}
+    <section class="panel onboarding">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Motor detenido</p>
+          <h2>El worker no está corriendo</h2>
+        </div>
+      </div>
+      <p class="muted">El panel encola tareas, pero el worker es quien abre el navegador y procesa la cola. Ejecutá en otra terminal:</p>
+      <p class="command-line">make worker</p>
+    </section>
+  {% endif %}
+
+  {% if not linkedin_session|default(false) %}
+    <section class="panel onboarding">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Cuenta de LinkedIn</p>
+          <h2>Conectá tu sesión</h2>
+        </div>
+      </div>
+      <p class="muted">Se abrirá una ventana de Chromium para que completes el login. La app no guarda tu contraseña.</p>
+      <form method="post" action="/settings/login-linkedin" class="inline-form" data-confirm="Se abrirá una ventana de Chromium para el login de LinkedIn.">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <button class="button button-primary" type="submit">Abrir login de LinkedIn</button>
+      </form>
+      <p class="muted small">Si el worker está detenido, iniciá <code>make worker</code> primero.</p>
+    </section>
+  {% endif %}
+
   {% if onboarding %}
     <section class="panel onboarding">
       <div class="panel-head">

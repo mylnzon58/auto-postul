@@ -6,7 +6,7 @@ import asyncio
 import logging
 
 from auto_postul.application.prepare import ApplicationError, prepare, submit
-from auto_postul.application.queue import claim_next, fail, finish
+from auto_postul.application.queue import claim_next, fail, finish, touch_worker
 from auto_postul.application.scan import run_scan
 from auto_postul.config import get_settings
 from auto_postul.db.seed import seed_defaults
@@ -56,13 +56,26 @@ async def execute(kind: str, payload: dict[str, object]) -> dict[str, object]:
     raise ApplicationError(f"Tipo de tarea desconocido: {kind}")
 
 
+async def heartbeat(settings) -> None:  # type: ignore[no-untyped-def]
+    """Mantiene vivo el estado del worker mientras procesa tareas largas."""
+    while True:
+        with session_scope(settings) as session:
+            touch_worker(session)
+        await asyncio.sleep(5)
+
+
 async def loop() -> None:
     settings = get_settings()
     configure_logging(settings)
     init_db(settings)
     with session_scope(settings) as session:
         seed_defaults(session)
+        touch_worker(session)
     logger.info("Worker iniciado")
+    background: set[asyncio.Task[None]] = set()
+    heartbeat_task = asyncio.create_task(heartbeat(settings))
+    background.add(heartbeat_task)
+    heartbeat_task.add_done_callback(background.discard)
     while True:
         with session_scope(settings) as session:
             run = claim_next(session)

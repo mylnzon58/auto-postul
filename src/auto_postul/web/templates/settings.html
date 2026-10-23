@@ -21,6 +21,10 @@
         <button class="button button-primary" type="submit">Abrir login de LinkedIn</button>
       </form>
       <p class="muted small">Perfil: <span class="mono">{{ settings.linkedin_profile_dir }}</span></p>
+      <div class="safety-note">
+        Worker: <strong>{% if worker_online|default(false) %}activo{% else %}detenido{% endif %}</strong>.
+        {% if not worker_online|default(false) %}Ejecutá <code>make worker</code> para procesar login, escaneos y postulaciones.{% endif %}
+      </div>
       {% if active %}
         <div class="safety-note">
           Hay una tarea activa: <strong>{{ active.kind|task_label }}</strong> ({{ active.status|status_label }}).

@@ -1109,3 +1109,13 @@ input[type="checkbox"] {
     transition: none !important;
   }
 }
+
+.command-line {
+  display: inline-block;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface-alt);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
