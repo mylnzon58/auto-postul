@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -83,12 +84,21 @@ class GeminiService:
             contents.append(
                 types.Part.from_bytes(data=payload, mime_type=mime or "application/pdf")
             )
-        response = await client.aio.models.generate_content(
-            model=self.settings.gemini_model,
-            contents=contents,
-            config={"response_mime_type": "application/json", "temperature": 0.0},
-        )
-        return response.text or ""
+        last_error: Exception | None = None
+        for attempt in range(3):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=self.settings.gemini_model,
+                    contents=contents,
+                    config={"response_mime_type": "application/json", "temperature": 0.0},
+                )
+                return response.text or ""
+            except Exception as exc:
+                last_error = exc
+                if not _is_transient(exc) or attempt == 2:
+                    raise
+                await asyncio.sleep(2**attempt)
+        raise last_error or RuntimeError("Gemini no respondió.")
 
     async def extract_cv(self, text: str, pdf_bytes: bytes | None = None) -> CvData | None:
         """Extrae un CV. Si falla, el llamador usa la heurística local."""
@@ -138,6 +148,14 @@ class GeminiService:
             self._disable_if_fatal(exc)
             logger.warning("Gemini no pudo redactar la respuesta: %s", exc)
             return ""
+
+
+def _is_transient(exc: Exception) -> bool:
+    message = str(exc).casefold()
+    return any(
+        marker in message
+        for marker in ("unavailable", "resource_exhausted", "429", "503", "high demand", "timeout")
+    )
 
 
 def _loads(raw: str) -> dict[str, Any]:

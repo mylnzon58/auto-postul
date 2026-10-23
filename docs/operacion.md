@@ -40,7 +40,8 @@ En Linux/Windows, usá la ruta correspondiente de `platformdirs`.
 
 ## Diagnóstico
 
-1. `/api/health` debe devolver `ok: true`.
+1. `make doctor` revisa `.env`, SQLite, migración, Chromium, `uvx`, Gemini y sesión de LinkedIn.
+2. `/api/health` debe devolver `ok: true`.
 2. `Ajustes` muestra sesión de LinkedIn, Gemini y tareas activas.
 3. `Actividad` muestra errores de worker.
 4. Si el MCP no arranca, verificá `uvx --version`.

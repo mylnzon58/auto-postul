@@ -1,7 +1,7 @@
 SHELL := /bin/zsh
 PY := uv run
 
-.PHONY: setup dev worker test lint typecheck format check migrate seed login browser clean
+.PHONY: setup dev worker test lint typecheck format check migrate seed login browser doctor clean
 
 setup:
 	uv sync --all-groups
@@ -40,6 +40,9 @@ seed:
 
 login:
 	$(PY) python -m auto_postul.cli login
+
+doctor:
+	$(PY) python -m auto_postul.cli doctor --ping-gemini
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage

@@ -85,7 +85,7 @@ Copiá `.env.example` a `.env`. Los valores importantes:
 
 ```dotenv
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 APPLY_DRY_RUN=true
 APPLY_LIVE_SUBMIT=false
 DAILY_SCAN_LIMIT=1
@@ -100,7 +100,9 @@ APPLY_DRY_RUN=false
 APPLY_LIVE_SUBMIT=true
 ```
 
-No commitees `.env`.
+No commitees `.env`. Si tenés `GEMINI_API_KEY` exportada en el shell, puede
+tener prioridad sobre `.env`; ejecutá `unset GEMINI_API_KEY` o usá el mismo
+valor en ambos lugares.
 
 ## Comandos
 
@@ -109,6 +111,7 @@ make setup      # dependencias + Chromium
 make dev        # panel local
 make worker     # cola de automatización
 make login      # login visible de LinkedIn
+make doctor     # diagnóstico local + ping de Gemini
 make migrate    # migraciones Alembic
 make seed       # skills, respuestas y búsquedas iniciales
 make test       # pytest

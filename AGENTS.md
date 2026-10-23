@@ -62,6 +62,7 @@ make check      # obligatorio antes de cerrar cualquier cambio
 make migrate
 make seed
 make login
+make doctor     # diagnóstico local + ping de Gemini
 ```
 
 ## Flujo de trabajo
