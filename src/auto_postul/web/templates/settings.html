@@ -77,8 +77,18 @@
       </form>
       <p class="muted small">Enviadas hoy: {{ submitted_today }}. La configuración se guarda en la base local y el worker la lee en la próxima tarea.</p>
       {% if auto_missing %}
-        <div class="flash flash-warning">Faltan datos verificados para ofertas que los piden: {{ auto_missing|join(", ") }}. El auto las omitirá hasta que los completes en Perfil → Banco de respuestas.</div>
+        <div class="flash flash-warning">Faltan datos verificados para ofertas que los piden: {{ auto_missing|join(", ") }}. El auto las omitirá hasta que los completes acá abajo.</div>
       {% endif %}
+      <form method="post" action="/settings/salary-answers" class="stack-sm salary-form">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <p class="eyebrow">Datos que no se inventan</p>
+        <div class="form-grid">
+          <label><span>Expectativa mensual USD</span><input name="salary_expectation_usd" value="{{ salary_answers.get('salary_expectation_usd','') }}" placeholder="Ej: 2500"></label>
+          <label><span>Salario anterior mensual USD</span><input name="previous_salary_usd" value="{{ salary_answers.get('previous_salary_usd','') }}" placeholder="Ej: 2000"></label>
+        </div>
+        <button class="button button-secondary" type="submit">Guardar datos salariales</button>
+        <p class="muted small">Si no querés responder, dejalo vacío: las ofertas que lo exijan se omiten.</p>
+      </form>
     </section>
 
     <section class="panel">

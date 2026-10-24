@@ -823,6 +823,29 @@ async def action_auto_apply(
     return RedirectResponse(url="/process", status_code=303)
 
 
+@router.post("/settings/salary-answers")
+async def save_salary_answers(
+    request: Request, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    await _csrf(request)
+    candidate = get_or_create_candidate(session)
+    form = await request.form()
+    for key in ("salary_expectation_usd", "previous_salary_usd"):
+        value = str(form.get(key) or "").strip()
+        row = session.scalars(
+            select(AnswerBank).where(
+                AnswerBank.candidate_id == candidate.id,
+                AnswerBank.key == key,
+            )
+        ).first()
+        if row is not None:
+            row.answer = value
+            row.verified = bool(value)
+            row.notes = "Dato ingresado por el usuario." if value else "Completar y verificar."
+    _flash(request, "Datos salariales guardados.", "success")
+    return RedirectResponse(url="/settings#auto", status_code=303)
+
+
 @router.post("/settings/auto-apply")
 async def save_auto_apply(request: Request, session: Session = Depends(get_db)) -> RedirectResponse:
     await _csrf(request)
@@ -860,6 +883,15 @@ def settings_page(request: Request, session: Session = Depends(get_db)) -> HTMLR
         llm_usage=read_usage(settings),
         submitted_today=submitted_today(session, get_or_create_candidate(session).id),
         auto_missing=missing_auto_answers(session, get_or_create_candidate(session).id),
+        salary_answers={
+            row.key: row.answer
+            for row in session.scalars(
+                select(AnswerBank).where(
+                    AnswerBank.candidate_id == get_or_create_candidate(session).id,
+                    AnswerBank.key.in_(["salary_expectation_usd", "previous_salary_usd"]),
+                )
+            ).all()
+        },
     )
 
 
