@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from auto_postul.application.auto_apply import (
     get_auto_settings,
+    missing_auto_answers,
     save_auto_settings,
     submitted_today,
 )
@@ -292,6 +293,7 @@ def dashboard(request: Request, session: Session = Depends(get_db)) -> HTMLRespo
         auto_settings=get_auto_settings(session),
         llm_usage=read_usage(get_settings()),
         submitted_today=submitted_today(session, candidate.id),
+        auto_missing=missing_auto_answers(session, candidate.id),
     )
 
 
@@ -857,6 +859,7 @@ def settings_page(request: Request, session: Session = Depends(get_db)) -> HTMLR
         auto_settings=get_auto_settings(session),
         llm_usage=read_usage(settings),
         submitted_today=submitted_today(session, get_or_create_candidate(session).id),
+        auto_missing=missing_auto_answers(session, get_or_create_candidate(session).id),
     )
 
 

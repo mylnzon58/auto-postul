@@ -101,6 +101,9 @@
         <p class="muted small">Solo ofertas remotas Easy Apply con afinidad mínima de <strong>{{ auto_settings.min_score }}</strong>.</p>
         <p class="muted small">Máximo {{ auto_settings.daily_limit }} por día · pausas aleatorias de {{ auto_settings.delay_min_seconds }}–{{ auto_settings.delay_max_seconds }} s.</p>
         <p class="muted small">Enviadas hoy: {{ submitted_today }} · IA hoy: {{ llm_usage.calls|default(0) }} llamadas / {{ (llm_usage.input_tokens|default(0)) + (llm_usage.output_tokens|default(0)) }} tokens.</p>
+        {% if auto_missing %}
+          <p class="risk-line small">Faltan datos para ofertas que los piden: {{ auto_missing|join(", ") }}. Completalos en Perfil → Banco de respuestas.</p>
+        {% endif %}
       </div>
       {% if not live_submit %}
         <div class="safety-note">La auto-postulación real requiere <code>APPLY_DRY_RUN=false</code> y <code>APPLY_LIVE_SUBMIT=true</code>.</div>

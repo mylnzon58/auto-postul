@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from auto_postul.application.prepare import ApplicationError, prepare, submit
 from auto_postul.config import Settings
 from auto_postul.db.models import (
+    AnswerBank,
     Application,
     Candidate,
     JobPosting,
@@ -22,8 +23,13 @@ from auto_postul.db.models import (
 )
 from auto_postul.db.seed import get_or_create_candidate
 from auto_postul.domain.enums import ApplicationStatus
+from auto_postul.infrastructure.linkedin_apply import close_application
 
 AUTO_SETTING_KEY = "auto_apply"
+AUTO_REQUIRED_ANSWERS = {
+    "salary_expectation_usd": "Expectativa salarial mensual en USD",
+    "previous_salary_usd": "Salario anterior mensual en USD",
+}
 
 
 @dataclass(slots=True)
@@ -81,6 +87,25 @@ def save_auto_settings(session: Session, values: dict[str, Any]) -> AutoSettings
         delay_max_seconds=int(payload["delay_max_seconds"]),
         remote_only=bool(payload["remote_only"]),
     )
+
+
+def missing_auto_answers(session: Session, candidate_id: str) -> list[str]:
+    """Datos sensibles que no se pueden inventar y bloquean ofertas que los piden."""
+    rows = {
+        row.key: row
+        for row in session.scalars(
+            select(AnswerBank).where(
+                AnswerBank.candidate_id == candidate_id,
+                AnswerBank.key.in_(AUTO_REQUIRED_ANSWERS),
+            )
+        ).all()
+    }
+    missing: list[str] = []
+    for key, label in AUTO_REQUIRED_ANSWERS.items():
+        row = rows.get(key)
+        if row is None or not row.verified or not row.answer.strip():
+            missing.append(label)
+    return missing
 
 
 def submitted_today(session: Session, candidate_id: str) -> int:
@@ -181,39 +206,44 @@ async def run_auto_apply(
         else:
             await asyncio.sleep(random.uniform(3, 8))
 
+        application = None
         try:
-            application, prepare_result = await prepare(session, settings, job.id)
-        except ApplicationError as exc:
-            skipped += 1
-            errors.append(f"{job.title}: {exc}")
-            continue
+            try:
+                application, prepare_result = await prepare(session, settings, job.id)
+            except ApplicationError as exc:
+                skipped += 1
+                errors.append(f"{job.title}: {exc}")
+                continue
 
-        if prepare_result.status != "ready_for_review":
-            skipped += 1
-            errors.append(f"{job.title}: preparación {prepare_result.status}")
-            continue
+            if prepare_result.status != "ready_for_review":
+                skipped += 1
+                errors.append(f"{job.title}: preparación {prepare_result.status}")
+                continue
 
-        try:
-            application, submit_result = await submit(
-                session,
-                settings,
-                application.id,
-                confirmation="ENVIAR",
-            )
-        except ApplicationError as exc:
-            skipped += 1
-            errors.append(f"{job.title}: {exc}")
-            continue
+            try:
+                application, submit_result = await submit(
+                    session,
+                    settings,
+                    application.id,
+                    confirmation="ENVIAR",
+                )
+            except ApplicationError as exc:
+                skipped += 1
+                errors.append(f"{job.title}: {exc}")
+                continue
 
-        if submit_result.status == "submitted":
-            sent += 1
-        elif submit_result.status == "submission_unknown":
-            errors.append(f"{job.title}: envío ambiguo, auto-postulación detenida.")
-            stopped_reason = "submission_unknown"
-            break
-        else:
-            skipped += 1
-            errors.append(f"{job.title}: {submit_result.message}")
+            if submit_result.status == "submitted":
+                sent += 1
+            elif submit_result.status == "submission_unknown":
+                errors.append(f"{job.title}: envío ambiguo, auto-postulación detenida.")
+                stopped_reason = "submission_unknown"
+                break
+            else:
+                skipped += 1
+                errors.append(f"{job.title}: {submit_result.message}")
+        finally:
+            if application is not None:
+                await close_application(application.id)
 
     message = f"Auto-postulación: {sent} enviadas, {skipped} omitidas."
     if stopped_reason == "submission_unknown":

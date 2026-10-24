@@ -7,6 +7,7 @@ Principio de seguridad: completa, revisa y se detiene. Nunca hace clic en
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import logging
@@ -83,11 +84,11 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
 
             playwright = await async_playwright().start()
             browser_context = await _launch_context(playwright, context.settings)
-            page = (
-                browser_context.pages[0]
-                if browser_context.pages
-                else await browser_context.new_page()
-            )
+            pages = list(browser_context.pages)
+            page = pages[0] if pages else await browser_context.new_page()
+            for extra in pages[1:]:
+                with contextlib.suppress(Exception):
+                    await extra.close()
             page.set_default_timeout(20_000)
             _start_live_preview(context.application_id, page, context.settings)
             await page.goto(context.job_url, wait_until="domcontentloaded", timeout=60_000)
@@ -105,7 +106,7 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
                 if raw_fields:
                     resolved = _resolve_fields(raw_fields, context)
                     fields.extend(resolved)
-                    await _fill_fields(dialog, resolved, context, step)
+                    await _fill_fields(page, dialog, resolved, context, step)
                     await _pause(context.settings)
 
                 if await _on_review(page, dialog):
@@ -185,11 +186,15 @@ async def submit_application(application_id: str, settings: Settings) -> SubmitR
         )
     page = session.page
     try:
-        button = page.get_by_role("button", name=SUBMIT_LABELS)
+        dialog = page.locator('[data-view-name="unified-apply"]')
+        root = dialog if await dialog.count() > 0 else page
+        button = root.get_by_role("button", name=SUBMIT_LABELS)
         if await button.count() == 0:
-            button = page.get_by_text(SUBMIT_LABELS)
+            button = root.get_by_text(SUBMIT_LABELS)
         if await button.count() == 0:
+            await close_application(application_id)
             return SubmitResult(status="failed", message="No encontré el botón de envío.")
+        await button.first.scroll_into_view_if_needed()
         await button.first.click()
         await _pause(settings)
         await asyncio.sleep(2)
@@ -212,6 +217,7 @@ async def submit_application(application_id: str, settings: Settings) -> SubmitR
         )
     except Exception as exc:
         logger.exception("Falló el envío de la postulación")
+        await close_application(application_id)
         return SubmitResult(status="failed", message=f"No se pudo enviar: {exc}")
 
 
@@ -543,19 +549,44 @@ def _resolve_one(
             return field.value, "linkedin_prefill"
         return candidate.get("phone", ""), "perfil"
     if "full name" in label or "nombre completo" in label:
-        return candidate.get("full_name", ""), "perfil"
+        return field.value or candidate.get("full_name", ""), "perfil"
     if "first name" in label or ("nombre" in label and "apellido" not in label):
-        return answers.get("first_name") or candidate.get("first_name", ""), "perfil"
+        return field.value or answers.get("first_name") or candidate.get("first_name", ""), "perfil"
     if "last name" in label or "apellido" in label:
-        return answers.get("last_name") or candidate.get("last_name", ""), "perfil"
+        return field.value or answers.get("last_name") or candidate.get("last_name", ""), "perfil"
     if "linkedin" in label:
         return answers.get("linkedin", candidate.get("linkedin_url", "")), "perfil"
     if "github" in label:
         return answers.get("github", candidate.get("github_url", "")), "perfil"
     if "city" in label or "ciudad" in label or "location" in label or "ubicación" in label:
+        if field.value:
+            return field.value, "linkedin_prefill"
         return candidate.get("location", ""), "perfil"
-    if "country" in label or "país" in label or "pais" in label or "código del país" in label:
+    if (
+        "outside of your home country" in label
+        or "fuera de tu país" in label
+        or "fuera de tu pais" in label
+    ):
+        return answers.get("worked_outside_home_country", "Sí"), "banco"
+    if (
+        "código del país" in label
+        or "which country" in label
+        or "país de residencia" in label
+        or "pais de residencia" in label
+    ):
         return answers.get("country", "") or candidate.get("location", ""), "banco"
+    if "language" in label and ("business" in label or "proficient" in label or "idioma" in label):
+        return answers.get("languages_business", ""), "banco"
+    if "tools" in label or "software" in label or "platforms" in label:
+        return answers.get("tools_platforms", ""), "banco"
+    if "industries" in label or "industrias" in label:
+        return answers.get("industries", ""), "banco"
+    if "how did you hear" in label or "cómo te enteraste" in label or "como te enteraste" in label:
+        return answers.get("hear_about", ""), "banco"
+    if "previous role" in label and "salary" in label:
+        return answers.get("previous_salary_usd", ""), "banco"
+    if "salary" in label and ("usd" in label or "monthly" in label):
+        return answers.get("salary_expectation_usd", ""), "banco"
     if "authorized" in label or "autoriz" in label or "work permit" in label:
         return answers.get("work_authorization", ""), "banco"
     if "sponsor" in label or "patrocin" in label:
@@ -590,11 +621,58 @@ def _resolve_one(
     return "", ""
 
 
+def _is_autocomplete_field(field: FormField) -> bool:
+    label = f"{field.label} {field.key}".casefold()
+    return any(
+        marker in label
+        for marker in ("location", "city", "ciudad", "ubicación", "ubicacion", "localidad")
+    )
+
+
+async def _select_autocomplete(page: Any, field: FormField) -> None:
+    """Selecciona una sugerencia del typeahead de ubicación."""
+    tokens = [token for token in re.split(r"[\s,]+", field.value.casefold()) if len(token) > 2]
+    try:
+        await asyncio.sleep(0.7)
+        options = page.get_by_role("option")
+        if await options.count() == 0:
+            options = page.locator('[role="listbox"] li')
+        best = None
+        best_score = -1
+        for index in range(min(await options.count(), 20)):
+            option = options.nth(index)
+            if not await option.is_visible():
+                continue
+            text = (await option.inner_text()).strip()
+            if not text:
+                continue
+            folded = text.casefold()
+            score = sum(1 for token in tokens if token in folded)
+            if score > best_score:
+                best_score = score
+                best = option
+            if best_score == len(tokens) and tokens:
+                break
+        if best is not None:
+            await best.click()
+            await asyncio.sleep(0.3)
+        else:
+            await page.keyboard.press("Enter")
+    except Exception:
+        logger.debug("No se pudo seleccionar sugerencia de %s", field.label, exc_info=True)
+
+
 async def _fill_fields(
-    dialog: Any, fields: list[FormField], context: ApplyContext, step: int
+    page: Any,
+    dialog: Any,
+    fields: list[FormField],
+    context: ApplyContext,
+    step: int,
 ) -> None:
     for field in fields:
         if field.status != "resolved" or not field.value:
+            continue
+        if field.source == "linkedin_prefill":
             continue
         locator = None
         try:
@@ -631,6 +709,7 @@ async def _fill_fields(
                     await option.first.check()
             else:
                 if context.settings.apply_human_typing and len(field.value) <= 240:
+                    await locator.fill("")
                     await locator.click()
                     await locator.press_sequentially(
                         field.value,
@@ -638,6 +717,8 @@ async def _fill_fields(
                     )
                 else:
                     await locator.fill(field.value)
+                if _is_autocomplete_field(field):
+                    await _select_autocomplete(page, field)
         except Exception as exc:
             logger.debug("No se pudo completar el campo %s: %s", field.label, exc)
             if field.required:
@@ -646,18 +727,14 @@ async def _fill_fields(
 
 async def _on_review(page: Any, dialog: Any) -> bool:
     """Solo cuenta como revisión en el último paso del flujo."""
-    progress = dialog.get_by_text(re.compile(r"\d+\s*/\s*\d+"))
-    try:
-        for index in range(min(await progress.count(), 5)):
-            item = progress.nth(index)
-            if not await item.is_visible():
-                continue
-            text = await item.inner_text()
-            match = re.search(r"(\d+)\s*/\s*(\d+)", text)
-            if match:
-                return int(match.group(1)) >= int(match.group(2))
-    except Exception:
-        pass
+    progress = dialog.get_by_text(re.compile(r"\d+\s*/\s*\d+\s*(?:páginas|pages)", re.IGNORECASE))
+    for index in range(min(await progress.count(), 5)):
+        item = progress.nth(index)
+        if not await item.is_visible():
+            continue
+        match = re.search(r"(\d+)\s*/\s*(\d+)", await item.inner_text())
+        if match:
+            return int(match.group(1)) >= int(match.group(2))
 
     submit_names = re.compile(
         r"enviar solicitud|enviar postulación|submit application|submit your application",

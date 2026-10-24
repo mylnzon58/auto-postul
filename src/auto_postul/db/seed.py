@@ -34,6 +34,13 @@ DEFAULT_ANSWERS: tuple[tuple[str, str], ...] = (
     ("salary_expectation", "Pretensión salarial"),
     ("linkedin", "Perfil de LinkedIn"),
     ("github", "Perfil de GitHub"),
+    ("languages_business", "¿En qué idiomas tenés competencia profesional?"),
+    ("tools_platforms", "¿Qué herramientas, software y plataformas usaste?"),
+    ("industries", "¿En qué industrias trabajaste?"),
+    ("hear_about", "¿Cómo te enteraste de esta oportunidad?"),
+    ("worked_outside_home_country", "¿Trabajaste con clientes fuera de tu país?"),
+    ("salary_expectation_usd", "¿Cuál es tu expectativa salarial mensual en USD?"),
+    ("previous_salary_usd", "¿Cuánto ganabas en tu rol anterior en USD mensuales?"),
 )
 
 DEFAULT_SEARCHES: tuple[dict[str, object], ...] = (
@@ -204,11 +211,34 @@ def _seed_searches(session: Session, candidate: Candidate) -> None:
         )
 
 
+FACTUAL_ANSWERS = {
+    "languages_business": "Español",
+    "tools_platforms": (
+        "Google Ads, Google Analytics 4, Google Tag Manager, Hotjar, Microsoft Clarity, "
+        "Meta Ads, Google Search Console, WordPress, React, Next.js, Node.js, Python, SQL, Git, Docker"
+    ),
+    "industries": "Ecommerce, retail, SaaS, medios digitales, servicios locales, transporte y publicidad",
+    "hear_about": "Job posting",
+    "worked_outside_home_country": "Sí",
+}
+
+
 def seed_defaults(session: Session) -> Candidate:
     """Crea catálogos, respuestas iniciales y búsquedas de ejemplo."""
     seed_skills(session)
     candidate = get_or_create_candidate(session)
     _seed_answers(session, candidate)
+    for key, value in FACTUAL_ANSWERS.items():
+        row = session.scalars(
+            select(AnswerBank).where(
+                AnswerBank.candidate_id == candidate.id,
+                AnswerBank.key == key,
+            )
+        ).first()
+        if row is not None and not row.answer:
+            row.answer = value
+            row.verified = True
+            row.notes = "Valor factual extraído del CV. Revisar en la UI."
     _seed_searches(session, candidate)
     return candidate
 

@@ -76,6 +76,9 @@
         <button class="button button-primary" type="submit">Guardar auto-postulación</button>
       </form>
       <p class="muted small">Enviadas hoy: {{ submitted_today }}. La configuración se guarda en la base local y el worker la lee en la próxima tarea.</p>
+      {% if auto_missing %}
+        <div class="flash flash-warning">Faltan datos verificados para ofertas que los piden: {{ auto_missing|join(", ") }}. El auto las omitirá hasta que los completes en Perfil → Banco de respuestas.</div>
+      {% endif %}
     </section>
 
     <section class="panel">
