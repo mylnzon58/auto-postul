@@ -99,6 +99,7 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
             page = await _click_easy_apply(page)
             await _pause(context.settings)
             dialog = await _wait_apply_form(page)
+            await asyncio.sleep(1.2)
 
             fields: list[FormField] = []
             for step in range(1, context.settings.apply_max_steps + 1):
@@ -107,12 +108,18 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
                     resolved = _resolve_fields(raw_fields, context)
                     fields.extend(resolved)
                     await _fill_fields(page, dialog, resolved, context, step)
+                    try:
+                        await asyncio.wait_for(
+                            _answer_known_choice_groups(page, dialog, context),
+                            timeout=15,
+                        )
+                    except TimeoutError:
+                        logger.warning("Grupos de opciones agotaron el tiempo")
                     await _pause(context.settings)
 
-                if await _on_review(page, dialog):
-                    break
-                errors = await _visible_errors(page)
+                errors = await _visible_errors(page, dialog)
                 if errors:
+                    await _save_debug_html(page, context, "validation")
                     return await _finish_with_screenshot(
                         page,
                         context,
@@ -122,6 +129,8 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
                         browser_context,
                         playwright,
                     )
+                if await _on_review(page, dialog):
+                    break
                 moved = await _click_next(page, dialog)
                 if not moved:
                     break
@@ -656,8 +665,11 @@ async def _select_autocomplete(page: Any, field: FormField) -> None:
         if best is not None:
             await best.click()
             await asyncio.sleep(0.3)
-        else:
-            await page.keyboard.press("Enter")
+            return
+        await page.keyboard.press("ArrowDown")
+        await asyncio.sleep(0.2)
+        await page.keyboard.press("Enter")
+        await asyncio.sleep(0.3)
     except Exception:
         logger.debug("No se pudo seleccionar sugerencia de %s", field.label, exc_info=True)
 
@@ -725,6 +737,104 @@ async def _fill_fields(
                 field.status = "pending"
 
 
+def _english_choice(value: str) -> str:
+    folded = value.casefold()
+    if any(marker in folded for marker in ("native", "nativo", "biling")):
+        return "Native/Fluent"
+    if any(marker in folded for marker in ("c1", "c2", "advanced", "avanzado")):
+        return "Advanced"
+    if any(marker in folded for marker in ("b1", "b2", "intermediate", "intermedio")):
+        return "Intermediate"
+    if any(marker in folded for marker in ("a1", "a2", "basico", "básico", "beginner")):
+        return "Beginner"
+    return "Beginner"
+
+
+async def _click_choice(page: Any, dialog: Any, text: str) -> bool:
+    """Click en una opción de radio/checkbox por su texto visible."""
+    pattern = re.compile(rf"^\s*{re.escape(text)}\s*$", re.IGNORECASE)
+    for role in ("checkbox", "radio"):
+        try:
+            locator = dialog.locator(f'[role="{role}"]').filter(has_text=pattern)
+            if await locator.count() > 0 and await locator.first.is_visible():
+                checked = await locator.first.get_attribute("aria-checked")
+                if checked != "true":
+                    await locator.first.scroll_into_view_if_needed()
+                    await asyncio.wait_for(locator.first.click(force=True), timeout=3)
+                    await asyncio.sleep(0.25)
+                    if await locator.first.get_attribute("aria-checked") != "true":
+                        inner = locator.first.locator("input").first
+                        if await inner.count() > 0:
+                            await asyncio.wait_for(inner.evaluate("el => el.click()"), timeout=3)
+                            await asyncio.sleep(0.25)
+                    if await locator.first.get_attribute("aria-checked") != "true":
+                        await asyncio.wait_for(locator.first.focus(), timeout=3)
+                        await page.keyboard.press("Space")
+                        await asyncio.sleep(0.25)
+                return True
+        except Exception:
+            continue
+    for locator in (
+        dialog.locator("label").filter(has_text=pattern),
+        dialog.get_by_text(pattern),
+    ):
+        try:
+            if await locator.count() > 0 and await locator.first.is_visible():
+                await locator.first.click()
+                return True
+        except Exception:
+            continue
+    try:
+        return bool(
+            await dialog.evaluate(
+                """(root, text) => {
+                  const wanted = text.trim().toLowerCase();
+                  const nodes = [...root.querySelectorAll('p, span, label, div')];
+                  const node = nodes.find((el) => {
+                    if (el.children.length > 0) return false;
+                    return (el.textContent || '').trim().toLowerCase() === wanted;
+                  });
+                  if (!node) return false;
+                  // LinkedIn usa div[role=checkbox] con un input oculto.
+                  const choice = node.closest('[role="checkbox"], [role="radio"], label');
+                  if (choice) { choice.click(); return true; }
+                  node.click(); return true;
+                }""",
+                text,
+            )
+        )
+    except Exception:
+        return False
+
+
+async def _answer_known_choice_groups(page: Any, dialog: Any, context: ApplyContext) -> None:
+    """Resuelve grupos de radios/checkboxes que el formulario no etiqueta bien."""
+    text = (await dialog.inner_text())[:60000].casefold()
+    if "proficiency in english" in text or "nivel de inglés" in text:
+        choice = _english_choice(context.candidate.get("english_level", ""))
+        for label in (choice, choice.replace("/", " "), "Beginner"):
+            try:
+                option = dialog.locator("label").filter(
+                    has_text=re.compile(rf"^\s*{re.escape(label)}\s*$", re.I)
+                )
+                if await option.count() > 0:
+                    await option.first.click()
+                    break
+            except Exception:
+                continue
+    if "timezone" in text or "zona horaria" in text or "able to work" in text:
+        timezones = context.answers.get("work_timezones", "US, Europe")
+        for token in [part.strip() for part in timezones.split(",") if part.strip()]:
+            try:
+                option = dialog.locator("label").filter(
+                    has_text=re.compile(rf"^\s*{re.escape(token)}\s*$", re.I)
+                )
+                if await option.count() > 0:
+                    await option.first.click()
+            except Exception:
+                continue
+
+
 async def _on_review(page: Any, dialog: Any) -> bool:
     """Solo cuenta como revisión en el último paso del flujo."""
     progress = dialog.get_by_text(re.compile(r"\d+\s*/\s*\d+\s*(?:páginas|pages)", re.IGNORECASE))
@@ -763,7 +873,7 @@ async def _on_review(page: Any, dialog: Any) -> bool:
     return False
 
 
-async def _visible_errors(page: Any) -> list[str]:
+async def _visible_errors(page: Any, dialog: Any | None = None) -> list[str]:
     errors: list[str] = []
     for selector in ('[role="alert"]:visible', ".artdeco-inline-feedback--error:visible"):
         locator = page.locator(selector)
@@ -775,6 +885,18 @@ async def _visible_errors(page: Any) -> list[str]:
             text = (await locator.nth(index).inner_text()).strip()
             if text and any(marker in text.casefold() for marker in ERROR_MARKERS):
                 errors.append(text[:300])
+    try:
+        body = (await (dialog or page.locator("body")).inner_text())[:20000].casefold()
+        for marker in (
+            "este campo es obligatorio",
+            "this field is required",
+            "este campo es requerido",
+            "required field",
+        ):
+            if marker in body:
+                errors.append(marker)
+    except Exception:
+        pass
     return errors
 
 
@@ -824,6 +946,14 @@ async def _finish_with_screenshot(
         await _safe_close(browser_context)
         await _safe_stop(playwright)
     return result
+
+
+async def _save_debug_html(page: Any, context: ApplyContext, suffix: str) -> None:
+    try:
+        path = context.settings.artifacts_dir / f"{context.application_id}-{suffix}.html"
+        path.write_text(await page.content(), encoding="utf-8")
+    except Exception:
+        logger.debug("No se pudo guardar el HTML de diagnóstico", exc_info=True)
 
 
 async def _screenshot(page: Any, settings: Settings, application_id: str, suffix: str) -> str:

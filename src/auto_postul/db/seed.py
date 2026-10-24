@@ -38,6 +38,8 @@ DEFAULT_ANSWERS: tuple[tuple[str, str], ...] = (
     ("tools_platforms", "¿Qué herramientas, software y plataformas usaste?"),
     ("industries", "¿En qué industrias trabajaste?"),
     ("hear_about", "¿Cómo te enteraste de esta oportunidad?"),
+    ("work_timezones", "¿En qué zonas horarias podés trabajar?"),
+    ("company_stage", "¿Qué tipo de empresa preferís?"),
     ("worked_outside_home_country", "¿Trabajaste con clientes fuera de tu país?"),
     ("salary_expectation_usd", "¿Cuál es tu expectativa salarial mensual en USD?"),
     ("previous_salary_usd", "¿Cuánto ganabas en tu rol anterior en USD mensuales?"),
@@ -219,6 +221,8 @@ FACTUAL_ANSWERS = {
     ),
     "industries": "Ecommerce, retail, SaaS, medios digitales, servicios locales, transporte y publicidad",
     "hear_about": "Job posting",
+    "work_timezones": "US, Europe",
+    "company_stage": "Open to all",
     "worked_outside_home_country": "Sí",
 }
 
