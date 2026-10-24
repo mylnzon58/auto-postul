@@ -81,3 +81,18 @@ def test_bands() -> None:
     assert band_for(65) == "media"
     assert band_for(45) == "media_baja"
     assert band_for(10) == "baja"
+
+
+def test_off_target_role_caps_score() -> None:
+    off_target = job()
+    off_target.title = "Embedded Engineer"
+    off_target.job_family = "full_stack"
+
+    result = score_job(
+        candidate(),
+        off_target,
+        [("python", "Python", "required")],
+    )
+
+    assert result.total <= 55
+    assert any("fuera de los roles objetivo" in risk for risk in result.risks)

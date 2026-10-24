@@ -27,7 +27,7 @@ from auto_postul.db.models import (
     Skill,
 )
 from auto_postul.db.seed import get_or_create_candidate
-from auto_postul.domain.jobs import job_skill_tuples, parse_job_payload
+from auto_postul.domain.jobs import detect_apply_type, job_skill_tuples, parse_job_payload
 from auto_postul.domain.schemas import ParsedJob
 from auto_postul.domain.scoring import CandidateSnapshot, JobSnapshot, score_job
 from auto_postul.infrastructure.gemini import GeminiService
@@ -144,6 +144,7 @@ async def run_scan(
     settings: Settings,
     *,
     search_profile_id: str | None = None,
+    max_jobs: int | None = None,
 ) -> dict[str, Any]:
     """Escanea búsquedas activas. No crea postulaciones ni envía nada."""
     candidate = get_or_create_candidate(session)
@@ -159,6 +160,8 @@ async def run_scan(
         return {"searches": 0, "jobs": 0, "skipped": 0, "message": "No hay búsquedas activas."}
 
     remaining = max(0, settings.daily_job_detail_limit - _count_jobs_today(session))
+    if max_jobs is not None:
+        remaining = min(remaining, max(0, max_jobs))
     if remaining <= 0:
         return {
             "searches": 0,
@@ -170,6 +173,8 @@ async def run_scan(
     gemini = GeminiService(settings)
     new_jobs = 0
     skipped = 0
+    skipped_external = 0
+    skipped_unknown = 0
     errors: list[str] = []
 
     async with LinkedInMcpClient(settings) as mcp:
@@ -217,6 +222,13 @@ async def run_scan(
                     sections = details.get("sections")
                     if isinstance(sections, dict):
                         raw_text = str(sections.get("job_posting") or "")
+                    detected_type = detect_apply_type(details, raw_text)
+                    if detected_type != "easy_apply":
+                        if detected_type == "unknown":
+                            skipped_unknown += 1
+                        else:
+                            skipped_external += 1
+                        continue
                     parsed = await gemini.extract_job(raw_text, external_id, url)
                     if parsed is None:
                         parsed = parse_job_payload(details, external_id, url)
@@ -273,10 +285,14 @@ async def run_scan(
                             )
                     _score_and_store(session, candidate, search, job, parsed)
                     new_jobs += 1
+                    # Libera el lock para que el heartbeat y el panel vean el avance.
+                    session.commit()
                 except Exception as exc:
+                    session.rollback()
                     errors.append(f"Oferta {external_id}: {exc}")
 
             search.last_run_at = datetime.now(UTC)
+            session.commit()
             if new_jobs >= remaining:
                 break
         await mcp.close_session()
@@ -286,9 +302,14 @@ async def run_scan(
         "searches": len(searches),
         "jobs": new_jobs,
         "skipped": skipped,
+        "skipped_external": skipped_external,
+        "skipped_unknown": skipped_unknown,
         "remaining_today": max(0, remaining - new_jobs),
         "errors": errors,
-        "message": f"Se agregaron {new_jobs} ofertas nuevas.",
+        "message": (
+            f"Se agregaron {new_jobs} ofertas Easy Apply. "
+            f"Se descartaron {skipped_external} externas y {skipped_unknown} sin clasificar."
+        ),
     }
 
 
@@ -327,3 +348,68 @@ def mark_existing_applications(session: Session, candidate_id: str, applied_ids:
 
 def latest_run(session: Session) -> AutomationRun | None:
     return session.scalars(select(AutomationRun).order_by(AutomationRun.created_at.desc())).first()
+
+
+def rescore_jobs(session: Session, settings: Settings) -> int:
+    """Recalcula los scores existentes sin volver a consultar LinkedIn."""
+    candidate = get_or_create_candidate(session)
+    searches = {
+        row.id: row
+        for row in session.scalars(
+            select(SearchProfile).where(SearchProfile.candidate_id == candidate.id)
+        ).all()
+    }
+    default_search = next(iter(searches.values()), None)
+    jobs = session.scalars(select(JobPosting)).all()
+    updated = 0
+    for job in jobs:
+        search = searches.get(job.search_profile_id or "") or default_search
+        if search is None:
+            continue
+        snapshot = _candidate_snapshot(session, candidate, search)
+        job_snapshot = JobSnapshot(
+            title=job.title,
+            company=job.company_name,
+            location=job.location,
+            work_mode=job.work_mode,
+            description=job.description,
+            requirements=job.requirements,
+            job_family=job.job_family,
+            apply_type=job.apply_type,
+        )
+        skill_rows = session.execute(
+            select(Skill.slug, Skill.name, JobSkill.requirement_type)
+            .join(JobSkill, JobSkill.skill_id == Skill.id)
+            .where(JobSkill.job_id == job.id)
+        ).all()
+        result = score_job(
+            snapshot,
+            job_snapshot,
+            [(str(slug), str(name), str(kind)) for slug, name, kind in skill_rows],
+            search.min_score,
+        )
+        session.execute(
+            delete(JobScore).where(
+                JobScore.job_id == job.id,
+                JobScore.candidate_id == candidate.id,
+            )
+        )
+        session.add(
+            JobScore(
+                job_id=job.id,
+                candidate_id=candidate.id,
+                search_profile_id=search.id,
+                rubric_version=result.rubric_version,
+                total=result.total,
+                band=result.band,
+                components=[component.as_dict() for component in result.components],
+                matched_skills=result.matched_skills,
+                missing_skills=result.missing_skills,
+                risks=result.risks,
+                summary=result.summary,
+                model="rubrica-local",
+            )
+        )
+        updated += 1
+    session.commit()
+    return updated

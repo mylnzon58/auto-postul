@@ -105,17 +105,27 @@
       <section class="panel panel-sticky">
         <div class="panel-head"><h2>Confirmar envío</h2></div>
         {% if application.status == 'ready_for_review' %}
-          <p class="muted small">Escribí <strong>ENVIAR</strong> para confirmar. Esta acción no se puede deshacer.</p>
-          <form method="post" action="/applications/{{ application.id }}/submit" class="stack-sm" data-confirm="¿Confirmás el envío de esta postulación?">
+          <p class="muted small">
+            {% if live_submit %}
+              Escribí <strong>ENVIAR</strong> para confirmar. Esta acción no se puede deshacer.
+            {% else %}
+              Modo seguro: escribí <strong>ENVIAR</strong> para ejecutar una simulación. No se enviará nada.
+            {% endif %}
+          </p>
+          <form method="post" action="/applications/{{ application.id }}/submit" class="stack-sm" data-confirm="{% if live_submit %}¿Confirmás el envío real de esta postulación?{% else %}¿Ejecutar la simulación de envío en modo seguro?{% endif %}">
             <input type="hidden" name="_csrf" value="{{ csrf }}">
             <label>
               <span>Confirmación</span>
               <input type="text" name="confirmation" autocomplete="off" placeholder="ENVIAR" required>
             </label>
-            <button class="button button-primary full" type="submit">Enviar postulación</button>
+            {% if live_submit %}
+              <button class="button button-primary full" type="submit">Enviar postulación</button>
+            {% else %}
+              <button class="button button-secondary full" type="submit">Probar envío (modo seguro)</button>
+            {% endif %}
           </form>
           {% if not live_submit %}
-            <p class="muted small">Con la configuración actual, el worker registrará un dry-run y no enviará nada.</p>
+            <p class="muted small">Para habilitar el envío real: <code>APPLY_DRY_RUN=false</code> y <code>APPLY_LIVE_SUBMIT=true</code>, y reiniciar el worker.</p>
           {% endif %}
         {% else %}
           <p class="muted">La postulación no está lista para envío. Revisá el estado y los campos.</p>

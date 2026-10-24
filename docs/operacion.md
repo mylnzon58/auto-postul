@@ -9,6 +9,10 @@ make worker
 
 El panel queda en `http://127.0.0.1:8765`. El worker debe estar corriendo para escanear, preparar y enviar.
 
+## Panel
+
+El panel está en `http://127.0.0.1:8765`. El login de LinkedIn se inicia desde **Ajustes** o desde el aviso de **Resumen**. El worker debe estar activo; el panel muestra su estado en la barra lateral.
+
 ## Primera vez
 
 ```bash
@@ -37,6 +41,16 @@ cp "$HOME/Library/Application Support/AutoPostul/auto_postul.sqlite" ./backup-au
 ```
 
 En Linux/Windows, usá la ruta correspondiente de `platformdirs`.
+
+## Recalcular afinidad
+
+Si cambiaste el CV o las respuestas:
+
+```bash
+make rescore
+```
+
+No vuelve a consultar LinkedIn ni crea postulaciones.
 
 ## Diagnóstico
 

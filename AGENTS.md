@@ -63,6 +63,7 @@ make migrate
 make seed
 make login
 make doctor     # diagnóstico local + ping de Gemini
+make rescore    # recalcula afinidad sin consultar LinkedIn
 ```
 
 ## Flujo de trabajo

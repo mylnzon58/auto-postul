@@ -71,7 +71,7 @@ erDiagram
 
 - `automation_run`: cola y resultado.
 - `audit_log`: acciones del sistema.
-- `setting`: configuración persistente futura.
+- `setting`: configuración persistente y heartbeat del worker.
 
 ## Por qué JSON
 

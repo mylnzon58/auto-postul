@@ -91,19 +91,18 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
             await _assert_logged_in(page)
             await _assert_not_applied(page)
 
-            await _click_easy_apply(page)
+            page = await _click_easy_apply(page)
             await _pause(context.settings)
-            dialog = await _wait_dialog(page)
+            dialog = await _wait_apply_form(page)
 
             fields: list[FormField] = []
             for step in range(1, context.settings.apply_max_steps + 1):
                 raw_fields = await _extract_fields(dialog, step)
-                if not raw_fields:
-                    break
-                resolved = _resolve_fields(raw_fields, context)
-                fields.extend(resolved)
-                await _fill_fields(dialog, resolved, context, step)
-                await _pause(context.settings)
+                if raw_fields:
+                    resolved = _resolve_fields(raw_fields, context)
+                    fields.extend(resolved)
+                    await _fill_fields(dialog, resolved, context, step)
+                    await _pause(context.settings)
 
                 if await _on_review(page, dialog):
                     break
@@ -141,7 +140,18 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
             )
             return result
         except Exception as exc:
+            screenshot = ""
             if browser_context is not None:
+                try:
+                    if browser_context.pages:
+                        screenshot = await _screenshot(
+                            browser_context.pages[0],
+                            context.settings,
+                            context.application_id,
+                            "error",
+                        )
+                except Exception:
+                    logger.debug("No se pudo guardar la captura de error", exc_info=True)
                 await _safe_close(browser_context)
             if playwright is not None:
                 await _safe_stop(playwright)
@@ -150,6 +160,7 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
                 status="failed",
                 fields=[],
                 message=f"No se pudo preparar la postulación: {exc}",
+                screenshot=screenshot,
             )
 
 
@@ -249,7 +260,8 @@ async def _assert_not_applied(page: Any) -> None:
         raise RuntimeError("La oferta ya fue aplicada o está cerrada.")
 
 
-async def _click_easy_apply(page: Any) -> None:
+async def _click_easy_apply(page: Any) -> Any:
+    before_pages = set(page.context.pages)
     candidates = [
         page.locator('a[href*="/apply/"]:visible'),
         page.locator('[aria-label*="Easy Apply" i]:visible'),
@@ -260,20 +272,26 @@ async def _click_easy_apply(page: Any) -> None:
         try:
             if await locator.count() > 0:
                 await locator.first.click()
-                return
+                await asyncio.sleep(1.5)
+                new_pages = [item for item in page.context.pages if item not in before_pages]
+                if new_pages:
+                    return new_pages[-1]
+                return page
         except Exception:
             continue
     raise RuntimeError("No encontré el botón de Easy Apply. Puede que la oferta ya no lo tenga.")
 
 
-async def _wait_dialog(page: Any) -> Any:
+async def _wait_apply_form(page: Any) -> Any:
+    """Devuelve el modal o el body de la página completa de Easy Apply."""
     selectors = [
+        '[data-view-name="unified-apply"]',
         '[role="dialog"]',
         ".jobs-easy-apply-modal",
         "div[data-test-modal]",
         "div[aria-modal='true']",
     ]
-    for _ in range(20):
+    for _ in range(24):
         for selector in selectors:
             locator = page.locator(selector).first
             try:
@@ -281,8 +299,22 @@ async def _wait_dialog(page: Any) -> Any:
                     return locator
             except Exception:
                 continue
+        try:
+            body_text = (await page.locator("body").inner_text())[:4000].casefold()
+            is_apply_page = (
+                "companyname=" in page.url.casefold()
+                or "aplicar a" in body_text
+                or "contact info" in body_text
+                or "información de contacto" in body_text
+            )
+            has_fields = await page.locator("input, select, textarea").count() > 0
+            if is_apply_page and has_fields:
+                return page.locator("body")
+        except Exception:
+            pass
         await asyncio.sleep(0.5)
-    raise RuntimeError("No se abrió el formulario de Easy Apply.")
+    body = (await page.locator("body").inner_text())[:500].replace("\n", " ")
+    raise RuntimeError(f"No se abrió el formulario de Easy Apply. URL: {page.url}. Texto: {body}")
 
 
 EXTRACT_FIELDS_JS = r"""
@@ -369,6 +401,21 @@ def _resolve_fields(fields: list[FormField], context: ApplyContext) -> list[Form
     return fields
 
 
+def _english_option(value: str) -> str:
+    """Mapea el nivel honesto del CV a las opciones de LinkedIn."""
+    folded = value.casefold()
+    if any(marker in folded for marker in ("native", "nativo", "bilingüe", "bilingue")):
+        return "Native or bilingual"
+    if any(marker in folded for marker in ("c1", "c2", "advanced", "avanzado", "fluent", "fluido")):
+        return "Professional"
+    if any(
+        marker in folded for marker in ("b1", "b2", "intermediate", "intermedio", "conversational")
+    ):
+        return "Conversational"
+    # A1/A2/básico: no inflar el nivel.
+    return "None"
+
+
 def _resolve_one(
     field: FormField,
     candidate: dict[str, str],
@@ -381,8 +428,12 @@ def _resolve_one(
             return str(context.resume_path), "cv_original"
         return "", ""
     if "email" in label or "correo" in label:
+        if field.field_type == "select" and field.value:
+            return field.value, "linkedin_prefill"
         return candidate.get("email", ""), "perfil"
     if "phone" in label or "teléfono" in label or "telefono" in label:
+        if field.value:
+            return field.value, "linkedin_prefill"
         return candidate.get("phone", ""), "perfil"
     if "full name" in label or "nombre completo" in label:
         return candidate.get("full_name", ""), "perfil"
@@ -396,8 +447,8 @@ def _resolve_one(
         return answers.get("github", candidate.get("github_url", "")), "perfil"
     if "city" in label or "ciudad" in label or "location" in label or "ubicación" in label:
         return candidate.get("location", ""), "perfil"
-    if "country" in label or "país" in label or "pais" in label:
-        return answers.get("country", ""), "banco"
+    if "country" in label or "país" in label or "pais" in label or "código del país" in label:
+        return answers.get("country", "") or candidate.get("location", ""), "banco"
     if "authorized" in label or "autoriz" in label or "work permit" in label:
         return answers.get("work_authorization", ""), "banco"
     if "sponsor" in label or "patrocin" in label:
@@ -405,7 +456,10 @@ def _resolve_one(
     if "remote" in label or "remoto" in label:
         return answers.get("remote", "Sí"), "banco"
     if "english" in label or "inglés" in label or "ingles" in label:
-        return answers.get("english_level", ""), "banco"
+        value = answers.get("english_level", "") or candidate.get("english_level", "")
+        if field.field_type == "select":
+            return _english_option(value), "banco"
+        return value, "banco"
     if "years" in label or "años" in label:
         return candidate.get("years_experience", ""), "perfil"
     if (
@@ -451,7 +505,17 @@ async def _fill_fields(
                 try:
                     await locator.select_option(label=field.value)
                 except Exception:
-                    await locator.select_option(value=field.value)
+                    try:
+                        await locator.select_option(value=field.value)
+                    except Exception:
+                        options = await locator.locator("option").all()
+                        for option in options:
+                            text = (await option.inner_text()).strip()
+                            if field.value.casefold() in text.casefold():
+                                value = await option.get_attribute("value")
+                                if value:
+                                    await locator.select_option(value=value)
+                                break
             elif field.field_type in ("radio", "checkbox", "choice"):
                 option = dialog.get_by_label(field.value, exact=False)
                 if await option.count() == 0:
@@ -467,17 +531,45 @@ async def _fill_fields(
 
 
 async def _on_review(page: Any, dialog: Any) -> bool:
-    text = (await dialog.inner_text())[:8000].casefold()
-    return any(
-        marker in text
-        for marker in (
-            "review your application",
-            "review",
-            "revisar",
-            "submit application",
-            "enviar solicitud",
+    """Solo cuenta como revisión en el último paso del flujo."""
+    progress = dialog.get_by_text(re.compile(r"\d+\s*/\s*\d+"))
+    try:
+        for index in range(min(await progress.count(), 5)):
+            item = progress.nth(index)
+            if not await item.is_visible():
+                continue
+            text = await item.inner_text()
+            match = re.search(r"(\d+)\s*/\s*(\d+)", text)
+            if match:
+                return int(match.group(1)) >= int(match.group(2))
+    except Exception:
+        pass
+
+    submit_names = re.compile(
+        r"enviar solicitud|enviar postulación|submit application|submit your application",
+        re.IGNORECASE,
+    )
+    try:
+        locator = dialog.get_by_role("button", name=submit_names)
+        for index in range(min(await locator.count(), 3)):
+            if await locator.nth(index).is_visible():
+                return True
+    except Exception:
+        pass
+
+    heading = dialog.get_by_text(
+        re.compile(
+            r"review your application|revisar tu solicitud|tu solicitud está lista",
+            re.IGNORECASE,
         )
     )
+    try:
+        for index in range(min(await heading.count(), 3)):
+            if await heading.nth(index).is_visible():
+                return True
+    except Exception:
+        pass
+    return False
 
 
 async def _visible_errors(page: Any) -> list[str]:
@@ -505,9 +597,12 @@ async def _click_next(page: Any, dialog: Any) -> bool:
         try:
             if await locator.count() > 0:
                 await locator.first.click()
-                await asyncio.sleep(1.0)
-                after = await dialog.inner_text()
-                return bool(before != after)
+                for _ in range(10):
+                    await asyncio.sleep(0.5)
+                    after = await dialog.inner_text()
+                    if after != before:
+                        return True
+                return False
         except Exception:
             continue
     return False

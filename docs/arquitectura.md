@@ -38,6 +38,7 @@ Reglas de dependencia:
 9. La UI muestra la cola.
 10. Una tarea `prepare` abre Patchright, completa Easy Apply y se detiene.
 11. La UI muestra campos, fuente y advertencias.
+    El adaptador soporta el modal clásico y el flujo actual de página completa `unified-apply`.
 12. Una tarea `submit` exige `ENVIAR`, verifica el resultado y audita.
 
 ## Sesión de LinkedIn

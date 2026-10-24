@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy import select, text
 
 from auto_postul.application.cv_import import discover_root_pdfs, import_cv_from_path
-from auto_postul.application.scan import run_scan
+from auto_postul.application.scan import rescore_jobs, run_scan
 from auto_postul.config import get_settings
 from auto_postul.db.models import AutomationRun, Candidate, CandidateDocument
 from auto_postul.db.seed import seed_defaults
@@ -41,14 +41,25 @@ async def _import_cv() -> None:
             print(f"Importado: {path.name}")
 
 
-async def _scan() -> None:
+async def _scan(max_jobs: int | None = None, search: str | None = None) -> None:
     settings = get_settings()
     configure_logging(settings)
     init_db(settings)
     with session_scope(settings) as session:
         seed_defaults(session)
+    search_id = None
+    if search:
+        from sqlalchemy import select
+
+        from auto_postul.db.models import SearchProfile
+
+        with session_scope(settings) as session:
+            row = session.scalars(select(SearchProfile).where(SearchProfile.name == search)).first()
+            if row is None:
+                raise SystemExit(f"No encontré la búsqueda: {search}")
+            search_id = row.id
     with session_scope(settings) as session:
-        result = await run_scan(session, settings)
+        result = await run_scan(session, settings, search_profile_id=search_id, max_jobs=max_jobs)
     print(result)
 
 
@@ -154,8 +165,12 @@ def _doctor(ping_gemini: bool) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="AutoPostul CLI")
-    parser.add_argument("command", choices=["login", "import-cv", "scan", "serve", "doctor"])
+    parser.add_argument(
+        "command", choices=["login", "import-cv", "scan", "rescore", "serve", "doctor"]
+    )
     parser.add_argument("--ping-gemini", action="store_true")
+    parser.add_argument("--max-jobs", type=int, default=None)
+    parser.add_argument("--search", type=str, default=None)
     args = parser.parse_args()
     if args.command == "login":
         raise SystemExit(asyncio.run(_login()))
@@ -163,10 +178,20 @@ def main() -> None:
         asyncio.run(_import_cv())
         return
     if args.command == "scan":
-        asyncio.run(_scan())
+        asyncio.run(_scan(args.max_jobs, args.search))
         return
     if args.command == "doctor":
         raise SystemExit(_doctor(args.ping_gemini))
+    if args.command == "rescore":
+        settings = get_settings()
+        configure_logging(settings)
+        init_db(settings)
+        with session_scope(settings) as session:
+            seed_defaults(session)
+        with session_scope(settings) as session:
+            count = rescore_jobs(session, settings)
+        print(f"Scores recalculados: {count}")
+        return
     import uvicorn
 
     settings = get_settings()

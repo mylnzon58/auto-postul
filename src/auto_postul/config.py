@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     app_data_dir: Path | None = None
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
+    gemini_model: str = "gemini-3.5-flash"
 
     linkedin_mcp_version: str = "4.28.0"
     linkedin_headless: bool = True

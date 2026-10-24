@@ -43,3 +43,12 @@ def test_resolve_known_fields_and_pause_unknown() -> None:
     assert resolved[1].value == "Ana"
     assert resolved[2].value == "Sí"
     assert resolved[3].status == "pending"
+
+
+def test_english_level_mapping_is_honest() -> None:
+    from auto_postul.infrastructure.linkedin_apply import _english_option
+
+    assert _english_option("A1 / básico") == "None"
+    assert _english_option("B2") == "Conversational"
+    assert _english_option("C1") == "Professional"
+    assert _english_option("Nativo") == "Native or bilingual"

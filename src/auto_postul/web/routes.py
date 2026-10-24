@@ -180,6 +180,13 @@ def _scan_used_today(session: Session) -> int:
         select(func.count(AutomationRun.id)).where(
             AutomationRun.kind == TaskKind.SCAN.value,
             AutomationRun.created_at >= today,
+            AutomationRun.status.in_(
+                [
+                    TaskStatus.QUEUED.value,
+                    TaskStatus.RUNNING.value,
+                    TaskStatus.DONE.value,
+                ]
+            ),
         )
     )
     return int(value or 0)

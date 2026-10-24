@@ -71,12 +71,12 @@ El worker procesa escaneos, preparaciones y envíos. La UI solo encola; el naveg
 
 1. **Perfil y CV**: importá el PDF. Revisá identidad, skills y experiencias.
 2. **Banco de respuestas**: marcá como verificadas solo las respuestas que confirmás.
-3. **Ajustes**: abrí el login de LinkedIn y completá el acceso en la ventana visible.
+3. **Ajustes o Resumen**: abrí el login de LinkedIn y completá el acceso en la ventana visible.
 4. **Búsquedas**: revisá o creá perfiles de búsqueda.
-5. **Resumen**: ejecutá un escaneo.
-6. **Ofertas**: mirá el termómetro, la evidencia y los faltantes.
-7. **Preparar**: el worker abre Easy Apply y completa el formulario.
-8. **Revisión**: revisá cada campo.
+5. **Resumen**: ejecutá un escaneo. El panel muestra si el worker está activo.
+6. **Ofertas**: mirá el termómetro, la evidencia y los faltantes. Las ofertas externas se descartan.
+7. **Preparar**: el worker abre Easy Apply y completa el formulario, incluso el flujo de página completa.
+8. **Revisión**: revisá cada campo en el panel y en la ventana del navegador.
 9. **Enviar**: escribí `ENVIAR`. En modo seguro no se envía nada.
 
 ## Configuración
@@ -85,7 +85,7 @@ Copiá `.env.example` a `.env`. Los valores importantes:
 
 ```dotenv
 GEMINI_API_KEY=...
-GEMINI_MODEL=gemini-3.8-flash
+GEMINI_MODEL=gemini-3.5-flash
 APPLY_DRY_RUN=true
 APPLY_LIVE_SUBMIT=false
 DAILY_SCAN_LIMIT=1
@@ -112,6 +112,7 @@ make dev        # panel local
 make worker     # cola de automatización
 make login      # login visible de LinkedIn
 make doctor     # diagnóstico local + ping de Gemini
+make rescore    # recalcula afinidad sin volver a consultar LinkedIn
 make migrate    # migraciones Alembic
 make seed       # skills, respuestas y búsquedas iniciales
 make test       # pytest

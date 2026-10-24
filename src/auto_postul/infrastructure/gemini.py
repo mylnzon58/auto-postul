@@ -65,6 +65,9 @@ class GeminiService:
         if "leaked" in message or "permission_denied" in message:
             self._disabled_reason = "La API key de Gemini fue rechazada."
             logger.error("Gemini deshabilitado en esta ejecución: %s", exc)
+        elif "resource_exhausted" in message or "quota" in message:
+            self._disabled_reason = "La cuota diaria de Gemini se agotó."
+            logger.warning("Gemini deshabilitado hasta el próximo día: %s", exc)
 
     def _get_client(self) -> Any:
         if not self.available:
@@ -95,7 +98,8 @@ class GeminiService:
                 return response.text or ""
             except Exception as exc:
                 last_error = exc
-                if not _is_transient(exc) or attempt == 2:
+                self._disable_if_fatal(exc)
+                if not _is_transient(exc) or attempt == 2 or not self.available:
                     raise
                 await asyncio.sleep(2**attempt)
         raise last_error or RuntimeError("Gemini no respondió.")
@@ -105,7 +109,10 @@ class GeminiService:
         if not self.available:
             return None
         try:
-            raw = await self._generate(CV_PROMPT + "\n\nCV:\n" + text[:30000], pdf_bytes)
+            raw = await asyncio.wait_for(
+                self._generate(CV_PROMPT + "\n\nCV:\n" + text[:30000], pdf_bytes),
+                timeout=60,
+            )
             data = _loads(raw)
             return _cv_from_dict(data, text)
         except Exception as exc:
@@ -118,7 +125,10 @@ class GeminiService:
         if not self.available:
             return None
         try:
-            raw = await self._generate(JOB_PROMPT + "\n\nOFERTA:\n" + text[:30000])
+            raw = await asyncio.wait_for(
+                self._generate(JOB_PROMPT + "\n\nOFERTA:\n" + text[:30000]),
+                timeout=25,
+            )
             data = _loads(raw)
             return _job_from_dict(data, text, external_id, url)
         except Exception as exc:
@@ -138,10 +148,13 @@ class GeminiService:
         )
         try:
             client = self._get_client()
-            response = await client.aio.models.generate_content(
-                model=self.settings.gemini_model,
-                contents=prompt,
-                config={"temperature": 0.2},
+            response = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=self.settings.gemini_model,
+                    contents=prompt,
+                    config={"temperature": 0.2},
+                ),
+                timeout=30,
             )
             return (response.text or "").strip()
         except Exception as exc:

@@ -83,3 +83,74 @@ async def test_prepare_and_dry_run_submit(tmp_path: Path) -> None:
         assert submit.confirmed is False
     finally:
         await close_application("app-integration")
+
+
+FULL_PAGE_HTML = """<!doctype html><html><body>
+<button type="button" onclick="document.getElementById('apply').style.display='block'">Solicitud sencilla</button>
+<div id="apply" data-view-name="unified-apply" style="display:none">
+  <div id="progress">1/2 páginas</div>
+  <label for="email">Email address*</label>
+  <input id="email" name="email" type="email" value="prefilled@example.com" required>
+  <label for="country">Código del país*</label>
+  <select id="country" name="country" required>
+    <option value="ar">Argentina (+54)</option>
+    <option value="br">Brasil (+55)</option>
+  </select>
+  <button type="button" onclick="
+    document.getElementById('progress').textContent='2/2 páginas';
+    document.getElementById('submit').style.display='inline-block';
+  ">Siguiente</button>
+  <button id="submit" type="button" style="display:none" onclick="document.getElementById('sent').textContent='SI'">Enviar solicitud</button>
+  <div id="sent"></div>
+</div>
+</body></html>"""
+
+
+@pytest.mark.integration
+async def test_full_page_apply_stops_at_review(tmp_path: Path) -> None:
+    from patchright.async_api import async_playwright
+
+    try:
+        async with async_playwright() as playwright:
+            executable = Path(playwright.chromium.executable_path)
+            if not executable.exists():
+                pytest.skip("Chromium de Patchright no instalado.")
+    except Exception:
+        pytest.skip("Patchright no disponible.")
+
+    html = tmp_path / "full-page.html"
+    html.write_text(FULL_PAGE_HTML, encoding="utf-8")
+    resume = tmp_path / "cv.pdf"
+    resume.write_bytes(b"%PDF-1.4\nprueba")
+    settings = Settings(
+        app_data_dir=tmp_path,
+        apply_headless=True,
+        apply_dry_run=True,
+        apply_live_submit=False,
+        apply_action_delay_ms=10,
+        apply_max_steps=5,
+    )
+    context = ApplyContext(
+        application_id="app-full-page",
+        job_url=html.as_uri(),
+        candidate={
+            "email": "ana@example.com",
+            "phone": "123",
+            "full_name": "Ana Perez",
+            "location": "Argentina",
+            "years_experience": "6",
+        },
+        answers={"country": "Argentina"},
+        resume_path=resume,
+        settings=settings,
+    )
+
+    try:
+        result = await prepare_application(context)
+        assert result.status == "ready_for_review"
+        assert any(field.label.startswith("Email address") for field in result.fields)
+        assert not [
+            field for field in result.fields if field.required and field.status == "pending"
+        ]
+    finally:
+        await close_application("app-full-page")

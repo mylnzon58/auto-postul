@@ -171,7 +171,7 @@ async def prepare(
         delete(ApplicationField).where(ApplicationField.application_id == application.id)
     )
     _event(session, application.id, "status_changed", "Preparando formulario Easy Apply.")
-    session.flush()
+    session.commit()
 
     context = ApplyContext(
         application_id=application.id,
@@ -215,7 +215,7 @@ async def prepare(
             "field_unknown",
             "Hay campos obligatorios sin respuesta verificada. Completá el banco de respuestas.",
         )
-    session.flush()
+    session.commit()
     return application, result
 
 
@@ -250,7 +250,7 @@ async def submit(
     application.status = ApplicationStatus.SUBMITTING.value
     application.confirmation_text = confirmation
     _event(session, application.id, "status_changed", "Envío confirmado por el usuario.")
-    session.flush()
+    session.commit()
 
     result = await browser_submit(application.id, settings)
     if result.status == "submitted":
@@ -272,7 +272,7 @@ async def submit(
     if result.screenshot:
         _artifact(session, application.id, result.screenshot)
     application.browser_state = result.browser_state
-    session.flush()
+    session.commit()
     return application, result
 
 

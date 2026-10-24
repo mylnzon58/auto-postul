@@ -248,6 +248,9 @@ def score_job(
         risks.append("La oferta ya fue aplicada o está cerrada.")
     if job.apply_type == "external":
         risks.append("No es Easy Apply: el envío automático no está habilitado.")
+    if _off_target_role(job.title, candidate.target_titles):
+        cap = min(cap, 55)
+        risks.append("El título del puesto está fuera de los roles objetivo del perfil.")
 
     total = min(total, cap)
     if total < search_min_score:
@@ -265,6 +268,36 @@ def score_job(
         risks=risks,
         summary=summary,
     )
+
+
+OFF_TARGET_MARKERS = (
+    "embedded",
+    "firmware",
+    "c++",
+    "java",
+    ".net",
+    "data engineer",
+    "database",
+    "sre",
+    "devops",
+    "support",
+    "sales",
+    "business development",
+    "recruiter",
+    "qa",
+    "quality",
+    "analyst",
+    "operations",
+)
+
+
+def _off_target_role(title: str, target_titles: list[str]) -> bool:
+    folded_title = _fold(title)
+    folded_targets = _fold(" ".join(target_titles))
+    for marker in OFF_TARGET_MARKERS:
+        if marker in folded_title and marker not in folded_targets:
+            return True
+    return False
 
 
 def _label(key: str) -> str:

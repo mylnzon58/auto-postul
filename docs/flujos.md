@@ -14,10 +14,12 @@ CV PDF → copia inmutable → texto → Gemini/heurística → perfil revisable
 ## 2. Escaneo
 
 ```text
-búsquedas activas → MCP search_jobs → deduplicar → detalles → apply URL → normalizar → score
+búsquedas activas → MCP search_jobs → deduplicar → detalles → clasificar apply
+→ descartar externas → normalizar → score
 ```
 
-- Solo ofertas Easy Apply.
+- Solo se guardan ofertas Easy Apply.
+- Las externas y las que no se pueden clasificar se descartan y se informan en el resultado.
 - Límite diario de ofertas.
 - No crea postulaciones.
 - Si el MCP falla, la tarea registra el error y no inventa datos.
@@ -26,12 +28,15 @@ búsquedas activas → MCP search_jobs → deduplicar → detalles → apply URL
 ## 3. Preparación
 
 ```text
-job_id → verificar oferta → abrir Patchright → Easy Apply → leer campos → resolver
-→ completar → siguiente → revisión → guardar campos y captura
+job_id → verificar oferta → abrir Patchright → Easy Apply → detectar modal o página completa
+→ leer campos → resolver → completar → siguiente → revisión → guardar campos y captura
 ```
 
 - Respuestas desde perfil y banco verificado.
+- Contacto ya precargado por LinkedIn se preserva; no se cambia el email ni el teléfono de la cuenta.
+- El nivel de inglés se mapea sin inflarlo: A1/A2 → None, B1/B2 → Conversational, C1/C2 → Professional.
 - Campo obligatorio desconocido → `needs_input`; no se adivina.
+- La revisión se detecta en el último paso visible (`4/4 páginas`) y no en el botón intermedio “Revisar”.
 - Error de validación → se detiene y muestra el error.
 - Nunca hace clic en enviar.
 

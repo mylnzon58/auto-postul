@@ -24,6 +24,7 @@ from auto_postul.db.models import (
 from auto_postul.db.seed import get_or_create_candidate
 from auto_postul.domain.cv import extract_pdf_text, parse_cv_text
 from auto_postul.domain.schemas import CvData
+from auto_postul.domain.skills import detect_skills
 from auto_postul.infrastructure.gemini import GeminiService
 
 
@@ -64,6 +65,8 @@ async def import_cv_from_path(
             "El PDF no tiene texto y Gemini no está disponible. Configurá GEMINI_API_KEY o usá un PDF digital."
         )
     cv = structured or parse_cv_text(text)
+    # Gemini prioriza precisión; la detección local agrega cobertura verificable.
+    cv.skills = sorted({*cv.skills, *(skill.slug for skill in detect_skills(text))})
 
     candidate = get_or_create_candidate(session)
     candidate.full_name = cv.full_name or candidate.full_name

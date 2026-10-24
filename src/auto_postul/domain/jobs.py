@@ -98,12 +98,57 @@ def _section(
     return "\n".join(lines[start + 1 : end]).strip()
 
 
-def detect_apply_type(payload: dict[str, Any]) -> str:
+def _header_text(lines: list[str]) -> str:
+    """Texto del encabezado de la oferta, antes de la descripción.
+
+    El texto del MCP incluye ofertas similares al final. "Solicitud sencilla"
+    puede aparecer allí sin describir esta oferta, así que solo se confía en
+    lo que está antes del encabezado de descripción.
+    """
+    end = _find_index(lines, DESCRIPTION_HEADINGS)
+    header = lines[:end] if end != -1 else lines[:30]
+    return "\n".join(header).casefold()
+
+
+def detect_apply_type(payload: dict[str, Any], text: str = "") -> str:
+    """Clasifica la postulación con señales del encabezado y del MCP."""
     apply_data = payload.get("apply")
+    mcp_type = ""
     if isinstance(apply_data, dict):
-        value = str(apply_data.get("type", "")).strip()
-        if value:
-            return value
+        mcp_type = str(apply_data.get("type", "")).strip()
+
+    header = _header_text(_clean_lines(text))
+    if any(
+        marker in header
+        for marker in ("solicitud enviada", "application submitted", "already applied")
+    ):
+        return "applied"
+    if any(
+        marker in header for marker in ("no longer accepting", "ya no acepta", "oferta cerrada")
+    ):
+        return "closed"
+    if any(
+        marker in header
+        for marker in (
+            "solicitud sencilla",
+            "postulación sencilla",
+            "postulacion sencilla",
+            "easy apply",
+        )
+    ):
+        return "easy_apply"
+    if any(
+        marker in header
+        for marker in (
+            "respuestas gestionadas fuera de linkedin",
+            "responses managed off linkedin",
+            "solicitar",
+            "apply",
+        )
+    ):
+        return "external"
+    if mcp_type in ("easy_apply", "external", "applied", "closed"):
+        return mcp_type
     return "unknown"
 
 
@@ -113,6 +158,31 @@ def classify_family(title: str, description: str) -> str:
         if any(marker in text for marker in markers):
             return family
     return "general"
+
+
+TITLE_MARKERS = (
+    "engineer",
+    "developer",
+    "designer",
+    "specialist",
+    "manager",
+    "analyst",
+    "consultant",
+    "architect",
+    "lead",
+    "scientist",
+    "administrator",
+    "coordinator",
+    "director",
+    "representative",
+    "operations",
+    "founder",
+)
+
+
+def _looks_like_title(value: str) -> bool:
+    folded = value.casefold()
+    return any(marker in folded for marker in TITLE_MARKERS)
 
 
 def detect_work_mode(text: str) -> str:
@@ -171,7 +241,7 @@ def parse_job_payload(
         gemini_job.external_id = external_id
         gemini_job.url = url
         gemini_job.raw_text = section_text
-        gemini_job.apply_type = detect_apply_type(payload) or gemini_job.apply_type
+        gemini_job.apply_type = detect_apply_type(payload, section_text) or gemini_job.apply_type
         gemini_job.job_family = gemini_job.job_family or classify_family(
             gemini_job.title, gemini_job.description
         )
@@ -181,6 +251,9 @@ def parse_job_payload(
     title = lines[0] if lines else ""
     company = lines[1] if len(lines) > 1 else ""
     location = lines[2] if len(lines) > 2 else ""
+    # En varias páginas el MCP captura primero la empresa y después el cargo.
+    if company and _looks_like_title(company) and not _looks_like_title(title):
+        title, company = company, title
 
     description = _section(
         lines,
@@ -197,7 +270,7 @@ def parse_job_payload(
         required_found = skills_found[:5]
 
     salary_min, salary_max, currency = detect_salary(section_text)
-    apply_type = detect_apply_type(payload)
+    apply_type = detect_apply_type(payload, section_text)
 
     return ParsedJob(
         external_id=external_id,
