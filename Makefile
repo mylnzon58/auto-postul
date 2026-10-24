@@ -1,7 +1,7 @@
 SHELL := /bin/zsh
 PY := uv run
 
-.PHONY: setup dev worker test lint typecheck format check migrate seed login browser rescore sync-applied doctor open clean
+.PHONY: setup dev worker test lint typecheck format check migrate seed login browser rescore sync-applied doctor open status stop clean
 
 setup:
 	uv sync --all-groups
@@ -52,6 +52,20 @@ doctor:
 
 open:
 	$(PY) -c "import webbrowser; webbrowser.open('http://127.0.0.1:8765')"
+
+status:
+	@echo "--- salud ---"
+	@curl -sS http://127.0.0.1:8765/api/health || true
+	@echo
+	@echo "--- procesos ---"
+	@pgrep -fl 'auto_postul.worker|uvicorn auto_postul' || true
+
+stop:
+	@-pkill -f 'uvicorn auto_postul.web.app:app' 2>/dev/null || true
+	@-pkill -f 'auto_postul.worker' 2>/dev/null || true
+	@-pkill -f 'AutoPostul/linkedin/profile' 2>/dev/null || true
+	@-pkill -f 'mcp-server-linkedin@4.28.0' 2>/dev/null || true
+	@echo "AutoPostul detenido."
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage
