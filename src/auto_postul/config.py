@@ -31,6 +31,8 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash"
+    gemini_cv_extraction: bool = True
+    gemini_job_extraction: bool = False
 
     linkedin_mcp_version: str = "4.28.0"
     linkedin_headless: bool = True
@@ -41,6 +43,9 @@ class Settings(BaseSettings):
     apply_live_submit: bool = False
     apply_max_steps: int = 8
     apply_action_delay_ms: int = 700
+    apply_action_delay_jitter_ms: int = 500
+    apply_human_typing: bool = True
+    remote_only: bool = True
 
     daily_scan_limit: int = 1
     daily_job_detail_limit: int = 25

@@ -37,6 +37,7 @@ job_id → verificar oferta → abrir Patchright → Easy Apply → detectar mod
 - El nivel de inglés se mapea sin inflarlo: A1/A2 → None, B1/B2 → Conversational, C1/C2 → Professional.
 - Campo obligatorio desconocido → `needs_input`; no se adivina.
 - La revisión se detecta en el último paso visible (`4/4 páginas`) y no en el botón intermedio “Revisar”.
+- Mientras el navegador está abierto, el panel **Proceso** muestra una captura en vivo cada 2 segundos.
 - Error de validación → se detiene y muestra el error.
 - Nunca hace clic en enviar.
 

@@ -88,6 +88,46 @@
     </article>
   </section>
 
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Modo personal</p>
+        <h2>Auto-postulación</h2>
+      </div>
+      <a class="text-link" href="/settings#auto">Configurar</a>
+    </div>
+    <div class="auto-summary">
+      <div>
+        <p class="muted small">Solo ofertas remotas Easy Apply con afinidad mínima de <strong>{{ auto_settings.min_score }}</strong>.</p>
+        <p class="muted small">Máximo {{ auto_settings.daily_limit }} por día · pausas aleatorias de {{ auto_settings.delay_min_seconds }}–{{ auto_settings.delay_max_seconds }} s.</p>
+        <p class="muted small">Enviadas hoy: {{ submitted_today }} · IA hoy: {{ llm_usage.calls|default(0) }} llamadas / {{ (llm_usage.input_tokens|default(0)) + (llm_usage.output_tokens|default(0)) }} tokens.</p>
+      </div>
+      {% if not live_submit %}
+        <div class="safety-note">La auto-postulación real requiere <code>APPLY_DRY_RUN=false</code> y <code>APPLY_LIVE_SUBMIT=true</code>.</div>
+      {% elif not auto_settings.enabled %}
+        <a class="button button-secondary" href="/settings#auto">Activar auto-postulación</a>
+      {% else %}
+        <form method="post" action="/actions/auto-apply" data-confirm="Auto-postulará ofertas remotas con score ≥ {{ auto_settings.min_score }}. Se enviarán sin revisión individual. ¿Continuar?">
+          <input type="hidden" name="_csrf" value="{{ csrf }}">
+          <button class="button button-primary" type="submit">Auto-postular ahora</button>
+        </form>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Automatización</p>
+        <h2>Proceso en vivo</h2>
+      </div>
+      <a class="text-link" href="/process">Ver proceso completo</a>
+    </div>
+    <div hx-get="/process/live" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      Cargando proceso…
+    </div>
+  </section>
+
   <div class="two-col">
     <section class="panel">
       <div class="panel-head">

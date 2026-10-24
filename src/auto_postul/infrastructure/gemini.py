@@ -5,6 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from auto_postul.config import Settings
@@ -12,6 +15,7 @@ from auto_postul.domain.schemas import CvData, CvEducation, CvExperience, Parsed
 from auto_postul.domain.skills import canonical_slug, detect_skills
 
 logger = logging.getLogger(__name__)
+_USAGE_LOCK = threading.Lock()
 
 
 CV_PROMPT = """Eres un extractor de datos de CV. Devuelve SOLO JSON válido.
@@ -78,7 +82,14 @@ class GeminiService:
             self._client = genai.Client(api_key=self.settings.gemini_api_key)
         return self._client
 
-    async def _generate(self, prompt: str, payload: bytes | None = None, mime: str = "") -> str:
+    async def _generate(
+        self,
+        prompt: str,
+        payload: bytes | None = None,
+        mime: str = "",
+        *,
+        purpose: str = "gemini",
+    ) -> str:
         client = self._get_client()
         contents: list[Any] = [prompt]
         if payload is not None:
@@ -95,6 +106,7 @@ class GeminiService:
                     contents=contents,
                     config={"response_mime_type": "application/json", "temperature": 0.0},
                 )
+                record_usage(self.settings, purpose, self.settings.gemini_model, response)
                 return response.text or ""
             except Exception as exc:
                 last_error = exc
@@ -106,11 +118,15 @@ class GeminiService:
 
     async def extract_cv(self, text: str, pdf_bytes: bytes | None = None) -> CvData | None:
         """Extrae un CV. Si falla, el llamador usa la heurística local."""
-        if not self.available:
+        if not self.available or not self.settings.gemini_cv_extraction:
             return None
         try:
             raw = await asyncio.wait_for(
-                self._generate(CV_PROMPT + "\n\nCV:\n" + text[:30000], pdf_bytes),
+                self._generate(
+                    CV_PROMPT + "\n\nCV:\n" + text[:30000],
+                    pdf_bytes,
+                    purpose="cv",
+                ),
                 timeout=60,
             )
             data = _loads(raw)
@@ -122,11 +138,14 @@ class GeminiService:
 
     async def extract_job(self, text: str, external_id: str, url: str) -> ParsedJob | None:
         """Extrae una oferta. Si falla, el llamador usa el parser local."""
-        if not self.available:
+        if not self.available or not self.settings.gemini_job_extraction:
             return None
         try:
             raw = await asyncio.wait_for(
-                self._generate(JOB_PROMPT + "\n\nOFERTA:\n" + text[:30000]),
+                self._generate(
+                    JOB_PROMPT + "\n\nOFERTA:\n" + text[:30000],
+                    purpose="job",
+                ),
                 timeout=25,
             )
             data = _loads(raw)
@@ -156,11 +175,68 @@ class GeminiService:
                 ),
                 timeout=30,
             )
+            record_usage(self.settings, "answer", self.settings.gemini_model, response)
             return (response.text or "").strip()
         except Exception as exc:
             self._disable_if_fatal(exc)
             logger.warning("Gemini no pudo redactar la respuesta: %s", exc)
             return ""
+
+
+def _usage_path(settings: Settings) -> Path:
+    return settings.data_dir / "llm_usage.json"
+
+
+def record_usage(settings: Settings, purpose: str, model: str, response: Any) -> None:
+    """Registra tokens de Gemini sin guardar prompts ni datos personales."""
+    metadata = getattr(response, "usage_metadata", None)
+    input_tokens = int(getattr(metadata, "prompt_token_count", 0) or 0)
+    output_tokens = int(getattr(metadata, "candidates_token_count", 0) or 0)
+    if input_tokens == 0 and output_tokens == 0:
+        return
+    today = datetime.now(UTC).date().isoformat()
+    with _USAGE_LOCK:
+        path = _usage_path(settings)
+        try:
+            data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except Exception:
+            data = {}
+        if data.get("date") != today:
+            data = {
+                "date": today,
+                "calls": 0,
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "by_purpose": {},
+            }
+        data["calls"] = int(data.get("calls", 0)) + 1
+        data["input_tokens"] = int(data.get("input_tokens", 0)) + input_tokens
+        data["output_tokens"] = int(data.get("output_tokens", 0)) + output_tokens
+        by_purpose = data.setdefault("by_purpose", {})
+        bucket = by_purpose.setdefault(purpose, {"calls": 0, "input_tokens": 0, "output_tokens": 0})
+        bucket["calls"] = int(bucket.get("calls", 0)) + 1
+        bucket["input_tokens"] = int(bucket.get("input_tokens", 0)) + input_tokens
+        bucket["output_tokens"] = int(bucket.get("output_tokens", 0)) + output_tokens
+        data["model"] = model
+        data["updated_at"] = datetime.now(UTC).isoformat()
+        try:
+            temp = path.with_suffix(".tmp")
+            temp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+            temp.replace(path)
+        except OSError:
+            logger.debug("No se pudo guardar el consumo de Gemini", exc_info=True)
+
+
+def read_usage(settings: Settings) -> dict[str, Any]:
+    path = _usage_path(settings)
+    today = datetime.now(UTC).date().isoformat()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except Exception:
+        data = {}
+    if data.get("date") != today:
+        return {"date": today, "calls": 0, "input_tokens": 0, "output_tokens": 0, "by_purpose": {}}
+    return data
 
 
 def _is_transient(exc: Exception) -> bool:

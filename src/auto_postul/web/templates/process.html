@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Proceso · {{ app_name }}{% endblock %}
+{% block eyebrow %}Automatización en vivo{% endblock %}
+{% block page_title %}Proceso{% endblock %}
+{% block actions %}
+  <a class="button button-secondary" href="/activity">Actividad</a>
+{% endblock %}
+
+{% block content %}
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Navegador y cola</p>
+        <h2>Qué está haciendo el worker</h2>
+      </div>
+      <span class="badge">Actualización cada 2 s</span>
+    </div>
+    <div hx-get="/process/live" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      Cargando proceso…
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <div>
+        <p class="eyebrow">Diagnóstico</p>
+        <h2>Log reciente</h2>
+      </div>
+      <a class="text-link" href="/process/log" target="_blank" rel="noreferrer">Abrir log</a>
+    </div>
+    <pre class="log-tail">{{ log_tail }}</pre>
+  </section>
+{% endblock %}

@@ -57,7 +57,11 @@ make login
 make dev
 ```
 
-Abrí <http://127.0.0.1:8765>.
+Abrí <http://127.0.0.1:8765>. También podés usar:
+
+```bash
+make open
+```
 
 En otra terminal:
 
@@ -73,11 +77,36 @@ El worker procesa escaneos, preparaciones y envíos. La UI solo encola; el naveg
 2. **Banco de respuestas**: marcá como verificadas solo las respuestas que confirmás.
 3. **Ajustes o Resumen**: abrí el login de LinkedIn y completá el acceso en la ventana visible.
 4. **Búsquedas**: revisá o creá perfiles de búsqueda.
-5. **Resumen**: ejecutá un escaneo. El panel muestra si el worker está activo.
+5. **Resumen**: ejecutá un escaneo. El panel muestra si el worker está activo y **Proceso** muestra el navegador embebido en vivo.
 6. **Ofertas**: mirá el termómetro, la evidencia y los faltantes. Las ofertas externas se descartan.
 7. **Preparar**: el worker abre Easy Apply y completa el formulario, incluso el flujo de página completa.
 8. **Revisión**: revisá cada campo en el panel y en la ventana del navegador.
 9. **Enviar**: escribí `ENVIAR`. En modo seguro no se envía nada.
+
+## Auto-postulación personal
+
+En **Ajustes → Auto-postulación** podés habilitar el envío automático para tu perfil:
+
+- Solo ofertas remotas.
+- Solo Easy Apply.
+- Score mínimo configurable (por defecto 80).
+- Tope diario configurable (por defecto 5).
+- Pausas aleatorias entre ofertas y tipeo con demora variable.
+- Si falta un dato obligatorio, omite la oferta; no inventa respuestas.
+- Si un envío queda ambiguo, se detiene y no reintenta.
+
+El botón **Auto-postular ahora** aparece en el Resumen. Requiere envío live y una confirmación en el panel. No se ejecuta solo por tener la app abierta.
+
+## IA mínima y consumo
+
+- La extracción de ofertas usa reglas locales por defecto (`GEMINI_JOB_EXTRACTION=false`).
+- Gemini se usa para estructurar el CV y, opcionalmente, para ofertas o respuestas.
+- **Ajustes → Gemini hoy** muestra llamadas y tokens en tiempo real.
+- No se guardan prompts ni datos personales en el registro de consumo.
+
+## Automatización
+
+La automatización usa **Patchright**, un fork de Playwright con Chromium persistente. No es Puppeteer. El navegador de postulación corre visible, usa un perfil dedicado y no falsifica el user-agent. La lectura de LinkedIn usa `mcp-server-linkedin`, que también corre sobre Patchright. Ninguno de los dos es un navegador de “modo test” de un framework de testing: son binarios Chromium reales, pero LinkedIn puede detectar automatización. Por eso existen pausas, límites y frenos.
 
 ## Configuración
 
@@ -86,6 +115,8 @@ Copiá `.env.example` a `.env`. Los valores importantes:
 ```dotenv
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-3.5-flash
+GEMINI_JOB_EXTRACTION=false
+REMOTE_ONLY=true
 APPLY_DRY_RUN=true
 APPLY_LIVE_SUBMIT=false
 DAILY_SCAN_LIMIT=1
@@ -113,6 +144,8 @@ make worker     # cola de automatización
 make login      # login visible de LinkedIn
 make doctor     # diagnóstico local + ping de Gemini
 make rescore    # recalcula afinidad sin volver a consultar LinkedIn
+make sync-applied # importa postulaciones enviadas desde LinkedIn
+make open       # abre el panel en el navegador
 make migrate    # migraciones Alembic
 make seed       # skills, respuestas y búsquedas iniciales
 make test       # pytest
@@ -170,6 +203,7 @@ Leé [`docs/seguridad.md`](docs/seguridad.md) antes de habilitar el envío live.
 
 ## Documentación
 
+- **Proceso** en el panel: navegador embebido, worker, cola y eventos en vivo.
 - [`docs/arquitectura.md`](docs/arquitectura.md)
 - [`docs/flujos.md`](docs/flujos.md)
 - [`docs/modelo-datos.md`](docs/modelo-datos.md)

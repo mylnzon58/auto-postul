@@ -64,7 +64,17 @@ make seed
 make login
 make doctor     # diagnóstico local + ping de Gemini
 make rescore    # recalcula afinidad sin consultar LinkedIn
+make sync-applied # importa postulaciones enviadas desde LinkedIn
+make open       # abre el panel local
 ```
+
+## Automatización
+
+- La lectura usa MCP + Patchright.
+- El envío usa Patchright, navegador visible y perfil dedicado.
+- La auto-postulación se configura en Ajustes y solo corre con envío live.
+- Tiempos aleatorios, tope diario y solo remoto por defecto.
+- La IA de ofertas está apagada por defecto para ahorrar cuota.
 
 ## Flujo de trabajo
 

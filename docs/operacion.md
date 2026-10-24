@@ -11,7 +11,9 @@ El panel queda en `http://127.0.0.1:8765`. El worker debe estar corriendo para e
 
 ## Panel
 
-El panel está en `http://127.0.0.1:8765`. El login de LinkedIn se inicia desde **Ajustes** o desde el aviso de **Resumen**. El worker debe estar activo; el panel muestra su estado en la barra lateral.
+El panel está en `http://127.0.0.1:8765`; `make open` lo abre. El login de LinkedIn se inicia desde **Ajustes** o desde el aviso de **Resumen**. El worker debe estar activo; el panel muestra su estado en la barra lateral.
+
+La sección **Proceso** embebe una captura del navegador de automatización actualizada cada 2 segundos, además del estado del worker, la cola y los últimos eventos.
 
 ## Primera vez
 
@@ -41,6 +43,28 @@ cp "$HOME/Library/Application Support/AutoPostul/auto_postul.sqlite" ./backup-au
 ```
 
 En Linux/Windows, usá la ruta correspondiente de `platformdirs`.
+
+## Sincronizar postulaciones enviadas
+
+Si enviaste una postulación manualmente desde LinkedIn:
+
+```bash
+make sync-applied
+```
+
+El próximo escaneo también sincroniza automáticamente la lista de aplicadas.
+
+## Auto-postulación
+
+En **Ajustes → Auto-postulación**:
+
+1. Habilitá el modo.
+2. Definí score mínimo, tope diario y pausas.
+3. Mantené “Solo trabajos remotos” activo si es tu caso.
+4. Configurá `APPLY_DRY_RUN=false` y `APPLY_LIVE_SUBMIT=true`, y reiniciá el worker.
+5. En **Resumen**, usá **Auto-postular ahora**.
+
+El botón tiene confirmación. El sistema prepara cada oferta, se detiene si falta un dato, envía y audita. Si un envío es ambiguo, detiene la tanda.
 
 ## Recalcular afinidad
 

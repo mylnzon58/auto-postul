@@ -11,11 +11,22 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from auto_postul.application.auto_apply import (
+    get_auto_settings,
+    save_auto_settings,
+    submitted_today,
+)
 from auto_postul.application.queue import enqueue, find_active, worker_online
 from auto_postul.config import Settings, get_settings
 from auto_postul.db.models import (
@@ -40,6 +51,8 @@ from auto_postul.db.models import (
 from auto_postul.db.seed import create_candidate, get_or_create_candidate, set_active_candidate
 from auto_postul.db.session import session_scope
 from auto_postul.domain.enums import ApplicationStatus, TaskKind, TaskStatus
+from auto_postul.infrastructure.gemini import read_usage
+from auto_postul.infrastructure.linkedin_apply import latest_live_preview, live_preview_snapshot
 from auto_postul.web.deps import get_db
 
 logger = logging.getLogger(__name__)
@@ -102,6 +115,7 @@ def _task_label(value: str) -> str:
         "scan": "Escaneo",
         "prepare": "Preparación",
         "submit": "Envío",
+        "auto_apply": "Auto-postulación",
         "login": "Login LinkedIn",
     }.get(value, value)
 
@@ -174,6 +188,47 @@ def _linkedin_session_present(settings: Settings) -> bool:
         return False
 
 
+def _active_and_latest_runs(session: Session) -> tuple[AutomationRun | None, AutomationRun | None]:
+    active = session.scalars(
+        select(AutomationRun)
+        .where(AutomationRun.status.in_([TaskStatus.QUEUED.value, TaskStatus.RUNNING.value]))
+        .order_by(AutomationRun.created_at)
+    ).first()
+    latest = session.scalars(
+        select(AutomationRun).order_by(AutomationRun.created_at.desc())
+    ).first()
+    return active, latest
+
+
+def _process_context(session: Session, settings: Settings) -> dict[str, Any]:
+    active, latest = _active_and_latest_runs(session)
+    live = latest_live_preview(settings)
+    application = None
+    if live is not None:
+        application = session.get(Application, str(live.get("application_id", "")))
+    events = session.scalars(
+        select(ApplicationEvent).order_by(ApplicationEvent.created_at.desc()).limit(8)
+    ).all()
+    return {
+        "live": live,
+        "active_run": active,
+        "latest_run": latest,
+        "live_application": application,
+        "recent_events": events,
+        "worker_online": worker_online(session),
+        "llm_usage": read_usage(settings),
+    }
+
+
+def _log_tail(settings: Settings, limit: int = 12000) -> str:
+    path = settings.data_dir / "logs" / "auto_postul.log"
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "Sin log todavía."
+    return text[-limit:]
+
+
 def _scan_used_today(session: Session) -> int:
     today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     value = session.scalar(
@@ -234,6 +289,9 @@ def dashboard(request: Request, session: Session = Depends(get_db)) -> HTMLRespo
         linkedin_session=_linkedin_session_present(get_settings()),
         scan_used=_scan_used_today(session),
         scan_limit=get_settings().daily_scan_limit,
+        auto_settings=get_auto_settings(session),
+        llm_usage=read_usage(get_settings()),
+        submitted_today=submitted_today(session, candidate.id),
     )
 
 
@@ -678,6 +736,112 @@ def activity_page(request: Request, session: Session = Depends(get_db)) -> HTMLR
     )
 
 
+@router.get("/process", response_class=HTMLResponse)
+def process_page(request: Request, session: Session = Depends(get_db)) -> HTMLResponse:
+    settings = get_settings()
+    context = _process_context(session, settings)
+    return _render(
+        request,
+        "process.html",
+        nav="process",
+        log_tail=_log_tail(settings),
+        **context,
+    )
+
+
+@router.get("/process/live", response_class=HTMLResponse)
+def process_live(request: Request, session: Session = Depends(get_db)) -> HTMLResponse:
+    settings = get_settings()
+    context = _process_context(session, settings)
+    context.setdefault("csrf", request.session.get("csrf", ""))
+    context.setdefault("live_submit", settings.live_submit_enabled)
+    context.setdefault("dry_run", settings.apply_dry_run)
+    return templates.TemplateResponse(
+        request=request,
+        name="partials/process_live.html",
+        context=context,
+    )
+
+
+@router.get("/live/{application_id}.png")
+def live_image(application_id: str, session: Session = Depends(get_db)) -> FileResponse:
+    settings = get_settings()
+    snapshot = live_preview_snapshot(settings, application_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail="Sin captura en vivo.")
+    path = Path(snapshot["image"])
+    if not path.exists() or settings.artifacts_dir not in path.parents:
+        raise HTTPException(status_code=404, detail="Captura no encontrada.")
+    return FileResponse(
+        path,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@router.get("/process/log", response_class=PlainTextResponse)
+def process_log() -> PlainTextResponse:
+    settings = get_settings()
+    return PlainTextResponse(_log_tail(settings), headers={"Cache-Control": "no-store"})
+
+
+@router.post("/actions/auto-apply")
+async def action_auto_apply(
+    request: Request, session: Session = Depends(get_db)
+) -> RedirectResponse:
+    await _csrf(request)
+    settings = get_settings()
+    config = get_auto_settings(session)
+    candidate = get_or_create_candidate(session)
+    if not config.enabled:
+        _flash(request, "Activá la auto-postulación en Ajustes primero.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
+    if not settings.live_submit_enabled:
+        _flash(request, "La auto-postulación requiere envío real habilitado.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
+    if not _linkedin_session_present(settings):
+        _flash(request, "Primero iniciá sesión en LinkedIn.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
+    if not worker_online(session):
+        _flash(request, "El worker no está activo. Ejecutá make worker.", "warning")
+        return RedirectResponse(url="/process", status_code=303)
+    if find_active(session, TaskKind.AUTO_APPLY) is not None:
+        _flash(request, "Ya hay una auto-postulación en curso.", "warning")
+        return RedirectResponse(url="/process", status_code=303)
+    if submitted_today(session, candidate.id) >= config.daily_limit:
+        _flash(request, "Límite diario de auto-postulación alcanzado.", "warning")
+        return RedirectResponse(url="/settings", status_code=303)
+    enqueue(session, TaskKind.AUTO_APPLY, {})
+    _flash(
+        request,
+        f"Auto-postulación encolada: score ≥ {config.min_score}, máximo {config.daily_limit} hoy. "
+        "Las pausas son aleatorias.",
+        "success",
+    )
+    return RedirectResponse(url="/process", status_code=303)
+
+
+@router.post("/settings/auto-apply")
+async def save_auto_apply(request: Request, session: Session = Depends(get_db)) -> RedirectResponse:
+    await _csrf(request)
+    form = await request.form()
+    try:
+        values = {
+            "enabled": "enabled" in form,
+            "min_score": int(str(form.get("min_score") or 80)),
+            "daily_limit": int(str(form.get("daily_limit") or 5)),
+            "delay_min_seconds": int(str(form.get("delay_min_seconds") or 45)),
+            "delay_max_seconds": int(str(form.get("delay_max_seconds") or 120)),
+            "remote_only": "remote_only" in form,
+        }
+    except ValueError:
+        _flash(request, "Los valores de auto-postulación deben ser numéricos.", "error")
+        return RedirectResponse(url="/settings", status_code=303)
+    save_auto_settings(session, values)
+    _flash(request, "Configuración de auto-postulación guardada.", "success")
+    return RedirectResponse(url="/settings", status_code=303)
+
+
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, session: Session = Depends(get_db)) -> HTMLResponse:
     settings = get_settings()
@@ -690,6 +854,9 @@ def settings_page(request: Request, session: Session = Depends(get_db)) -> HTMLR
         settings=settings,
         profile_present=profile_present,
         active=active,
+        auto_settings=get_auto_settings(session),
+        llm_usage=read_usage(settings),
+        submitted_today=submitted_today(session, get_or_create_candidate(session).id),
     )
 
 

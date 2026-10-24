@@ -11,7 +11,7 @@ from pathlib import Path
 from sqlalchemy import select, text
 
 from auto_postul.application.cv_import import discover_root_pdfs, import_cv_from_path
-from auto_postul.application.scan import rescore_jobs, run_scan
+from auto_postul.application.scan import mark_existing_applications, rescore_jobs, run_scan
 from auto_postul.config import get_settings
 from auto_postul.db.models import AutomationRun, Candidate, CandidateDocument
 from auto_postul.db.seed import seed_defaults
@@ -39,6 +39,25 @@ async def _import_cv() -> None:
         for path in pdfs:
             await import_cv_from_path(session, path, settings)
             print(f"Importado: {path.name}")
+
+
+async def _sync_applied() -> None:
+    settings = get_settings()
+    configure_logging(settings)
+    init_db(settings)
+    with session_scope(settings) as session:
+        seed_defaults(session)
+    with session_scope(settings) as session:
+        from auto_postul.db.seed import get_or_create_candidate
+        from auto_postul.infrastructure.linkedin_mcp import LinkedInMcpClient
+
+        candidate = get_or_create_candidate(session)
+        async with LinkedInMcpClient(settings) as mcp:
+            payload = await mcp.get_saved_jobs(stage="applied", max_pages=1)
+            ids = {str(item) for item in payload.get("job_ids", [])}
+            marked = mark_existing_applications(session, candidate.id, ids)
+            await mcp.close_session()
+    print(f"Postulaciones sincronizadas: {marked}")
 
 
 async def _scan(max_jobs: int | None = None, search: str | None = None) -> None:
@@ -166,7 +185,8 @@ def _doctor(ping_gemini: bool) -> int:
 def main() -> None:
     parser = argparse.ArgumentParser(description="AutoPostul CLI")
     parser.add_argument(
-        "command", choices=["login", "import-cv", "scan", "rescore", "serve", "doctor"]
+        "command",
+        choices=["login", "import-cv", "scan", "rescore", "sync-applied", "serve", "doctor"],
     )
     parser.add_argument("--ping-gemini", action="store_true")
     parser.add_argument("--max-jobs", type=int, default=None)
@@ -182,6 +202,9 @@ def main() -> None:
         return
     if args.command == "doctor":
         raise SystemExit(_doctor(args.ping_gemini))
+    if args.command == "sync-applied":
+        asyncio.run(_sync_applied())
+        return
     if args.command == "rescore":
         settings = get_settings()
         configure_logging(settings)

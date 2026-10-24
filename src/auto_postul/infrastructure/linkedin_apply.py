@@ -10,8 +10,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import random
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -66,6 +68,7 @@ class OpenSession:
 
 
 _OPEN_SESSIONS: dict[str, OpenSession] = {}
+_PREVIEW_TASKS: dict[str, asyncio.Task[None]] = {}
 _LOCK = asyncio.Lock()
 
 
@@ -86,6 +89,7 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
                 else await browser_context.new_page()
             )
             page.set_default_timeout(20_000)
+            _start_live_preview(context.application_id, page, context.settings)
             await page.goto(context.job_url, wait_until="domcontentloaded", timeout=60_000)
             await _pause(context.settings)
             await _assert_logged_in(page)
@@ -140,6 +144,7 @@ async def prepare_application(context: ApplyContext) -> PrepareResult:
             )
             return result
         except Exception as exc:
+            _stop_live_preview(context.application_id)
             screenshot = ""
             if browser_context is not None:
                 try:
@@ -211,11 +216,90 @@ async def submit_application(application_id: str, settings: Settings) -> SubmitR
 
 
 async def close_application(application_id: str) -> None:
+    _stop_live_preview(application_id)
     session = _OPEN_SESSIONS.pop(application_id, None)
     if session is None:
         return
     await _safe_close(session.context)
     await _safe_stop(session.playwright)
+
+
+def live_preview_paths(settings: Settings, application_id: str) -> tuple[Path, Path]:
+    """Rutas de la captura y metadatos del proceso en vivo."""
+    return (
+        settings.artifacts_dir / f"live-{application_id}.png",
+        settings.artifacts_dir / f"live-{application_id}.json",
+    )
+
+
+def _start_live_preview(application_id: str, page: Any, settings: Settings) -> None:
+    """Captura el navegador cada dos segundos para el panel."""
+    _stop_live_preview(application_id)
+    task = asyncio.create_task(_live_preview_loop(application_id, page, settings))
+    _PREVIEW_TASKS[application_id] = task
+
+
+def _stop_live_preview(application_id: str) -> None:
+    task = _PREVIEW_TASKS.pop(application_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+
+
+async def _live_preview_loop(application_id: str, page: Any, settings: Settings) -> None:
+    image_path, meta_path = live_preview_paths(settings, application_id)
+    while True:
+        try:
+            if page.is_closed():
+                break
+            await page.screenshot(path=str(image_path), animations="disabled")
+            payload = {
+                "application_id": application_id,
+                "url": page.url,
+                "title": await page.title(),
+                "updated_at": datetime.now(UTC).isoformat(),
+            }
+            meta_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Durante una navegación la captura puede fallar; se reintenta.
+            pass
+        await asyncio.sleep(2)
+
+
+def live_preview_snapshot(settings: Settings, application_id: str) -> dict[str, Any] | None:
+    """Lee la última captura de una postulación, si existe."""
+    image_path, meta_path = live_preview_paths(settings, application_id)
+    if not image_path.exists() or not meta_path.exists():
+        return None
+    try:
+        payload = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    payload["image"] = image_path
+    try:
+        updated = datetime.fromisoformat(str(payload.get("updated_at", "")))
+        payload["age_seconds"] = max(0.0, (datetime.now(UTC) - updated).total_seconds())
+    except Exception:
+        payload["age_seconds"] = 9999.0
+    return payload
+
+
+def latest_live_preview(settings: Settings) -> dict[str, Any] | None:
+    """Devuelve la captura más reciente entre todas las postulaciones."""
+    files = sorted(
+        settings.artifacts_dir.glob("live-*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for meta in files[:10]:
+        application_id = meta.stem.removeprefix("live-")
+        snapshot = live_preview_snapshot(settings, application_id)
+        if snapshot is not None:
+            return snapshot
+    return None
 
 
 async def _launch_context(playwright: Any, settings: Settings) -> Any:
@@ -234,20 +318,43 @@ async def _launch_context(playwright: Any, settings: Settings) -> Any:
 
 
 async def _pause(settings: Settings) -> None:
-    await asyncio.sleep(max(0.0, settings.apply_action_delay_ms / 1000))
+    base = max(0.0, settings.apply_action_delay_ms / 1000)
+    jitter = random.uniform(0.0, max(0.0, settings.apply_action_delay_jitter_ms / 1000))
+    await asyncio.sleep(base + jitter)
 
 
 async def _assert_logged_in(page: Any) -> None:
     url = page.url.casefold()
     if "/login" in url or "checkpoint" in url or "authwall" in url:
         raise RuntimeError("LinkedIn pidió login o verificación. Iniciá sesión desde Ajustes.")
-    text = (await page.locator("body").inner_text())[:3000].casefold()
+    text = (await page.locator("body").inner_text())[:5000].casefold()
+    if any(
+        marker in text
+        for marker in (
+            "captcha",
+            "verificación de seguridad",
+            "verificacion de seguridad",
+            "unusual activity",
+            "actividad inusual",
+            "rate limit",
+            "demasiadas solicitudes",
+            "too many requests",
+        )
+    ):
+        raise RuntimeError(
+            "LinkedIn pidió CAPTCHA, verificación o rate limit. La automatización se detuvo."
+        )
     if "sign in" in text and "linkedin" in text and "feed" not in url:
         raise RuntimeError("La sesión de LinkedIn no está activa.")
 
 
 async def _assert_not_applied(page: Any) -> None:
     text = (await page.locator("body").inner_text())[:12000].casefold()
+    for heading in ("acerca del empleo", "about the job", "descripción del puesto"):
+        index = text.find(heading)
+        if index != -1:
+            text = text[:index]
+            break
     markers = (
         "solicitud enviada",
         "application submitted",
@@ -523,7 +630,14 @@ async def _fill_fields(
                 if await option.count() > 0:
                     await option.first.check()
             else:
-                await locator.fill(field.value)
+                if context.settings.apply_human_typing and len(field.value) <= 240:
+                    await locator.click()
+                    await locator.press_sequentially(
+                        field.value,
+                        delay=random.randint(18, 70),
+                    )
+                else:
+                    await locator.fill(field.value)
         except Exception as exc:
             logger.debug("No se pudo completar el campo %s: %s", field.label, exc)
             if field.required:
@@ -629,6 +743,7 @@ async def _finish_with_screenshot(
         browser_state={"url": page.url},
     )
     if not keep_open:
+        _stop_live_preview(context.application_id)
         await _safe_close(browser_context)
         await _safe_stop(playwright)
     return result

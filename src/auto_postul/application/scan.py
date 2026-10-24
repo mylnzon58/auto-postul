@@ -175,9 +175,18 @@ async def run_scan(
     skipped = 0
     skipped_external = 0
     skipped_unknown = 0
+    skipped_non_remote = 0
     errors: list[str] = []
 
     async with LinkedInMcpClient(settings) as mcp:
+        try:
+            applied_payload = await mcp.get_saved_jobs(stage="applied", max_pages=1)
+            applied_ids = {str(item) for item in applied_payload.get("job_ids", [])}
+            if mark_existing_applications(session, candidate.id, applied_ids):
+                session.commit()
+        except Exception as exc:
+            errors.append(f"No se pudo sincronizar postulaciones enviadas: {exc}")
+
         for search in searches:
             try:
                 payload = await mcp.search_jobs(
@@ -234,6 +243,10 @@ async def run_scan(
                         parsed = parse_job_payload(details, external_id, url)
                     else:
                         parsed = parse_job_payload(details, external_id, url, parsed)
+
+                    if settings.remote_only and parsed.work_mode != "remote":
+                        skipped_non_remote += 1
+                        continue
 
                     company = _get_or_create_company(session, parsed.company)
                     job = JobPosting(
@@ -304,11 +317,13 @@ async def run_scan(
         "skipped": skipped,
         "skipped_external": skipped_external,
         "skipped_unknown": skipped_unknown,
+        "skipped_non_remote": skipped_non_remote,
         "remaining_today": max(0, remaining - new_jobs),
         "errors": errors,
         "message": (
-            f"Se agregaron {new_jobs} ofertas Easy Apply. "
-            f"Se descartaron {skipped_external} externas y {skipped_unknown} sin clasificar."
+            f"Se agregaron {new_jobs} ofertas Easy Apply remotas. "
+            f"Se descartaron {skipped_external} externas, "
+            f"{skipped_unknown} sin clasificar y {skipped_non_remote} no remotas."
         ),
     }
 

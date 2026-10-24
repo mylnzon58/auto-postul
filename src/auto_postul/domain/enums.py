@@ -36,6 +36,7 @@ class TaskKind(StrEnum):
     SCAN = "scan"
     PREPARE = "prepare"
     SUBMIT = "submit"
+    AUTO_APPLY = "auto_apply"
     LOGIN = "login"
 
 

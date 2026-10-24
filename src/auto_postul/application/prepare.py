@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from auto_postul.config import Settings
@@ -246,6 +247,19 @@ async def submit(
         raise ApplicationError("La postulación todavía no está lista para revisión.")
     if confirmation.strip().upper() != "ENVIAR":
         raise ApplicationError("Escribí ENVIAR para confirmar la postulación.")
+
+    today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    sent_today = session.scalar(
+        select(func.count(Application.id)).where(
+            Application.candidate_id == application.candidate_id,
+            Application.submitted_at.is_not(None),
+            Application.submitted_at >= today,
+        )
+    )
+    if int(sent_today or 0) >= settings.daily_apply_limit:
+        raise ApplicationError(
+            f"Límite diario de postulaciones alcanzado ({settings.daily_apply_limit})."
+        )
 
     application.status = ApplicationStatus.SUBMITTING.value
     application.confirmation_text = confirmation

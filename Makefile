@@ -1,7 +1,7 @@
 SHELL := /bin/zsh
 PY := uv run
 
-.PHONY: setup dev worker test lint typecheck format check migrate seed login browser rescore doctor clean
+.PHONY: setup dev worker test lint typecheck format check migrate seed login browser rescore sync-applied doctor open clean
 
 setup:
 	uv sync --all-groups
@@ -44,8 +44,14 @@ login:
 rescore:
 	$(PY) python -m auto_postul.cli rescore
 
+sync-applied:
+	$(PY) python -m auto_postul.cli sync-applied
+
 doctor:
 	$(PY) python -m auto_postul.cli doctor --ping-gemini
+
+open:
+	$(PY) -c "import webbrowser; webbrowser.open('http://127.0.0.1:8765')"
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache htmlcov .coverage

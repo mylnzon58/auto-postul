@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from auto_postul.application.auto_apply import run_auto_apply
 from auto_postul.application.prepare import ApplicationError, prepare, submit
 from auto_postul.application.queue import claim_next, fail, finish, touch_worker
 from auto_postul.application.scan import run_scan
@@ -50,6 +51,9 @@ async def execute(kind: str, payload: dict[str, object]) -> dict[str, object]:
                 "status": submit_result.status,
                 "message": submit_result.message,
             }
+    if kind == TaskKind.AUTO_APPLY.value:
+        with session_scope(settings) as session:
+            return await run_auto_apply(session, settings)
     if kind == TaskKind.LOGIN.value:
         code = await LinkedInMcpClient(settings).login()
         return {"exit_code": code, "message": "Login de LinkedIn finalizado."}

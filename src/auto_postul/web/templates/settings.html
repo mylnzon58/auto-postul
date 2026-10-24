@@ -46,6 +46,54 @@
       <p class="muted small">Los límites y el modo de envío se cambian en <code>.env</code>. Ningún secreto se muestra en el panel.</p>
     </section>
 
+    <section class="panel" id="auto">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Modo personal</p>
+          <h2>Auto-postulación</h2>
+        </div>
+        <span class="badge {% if auto_settings.enabled %}status-done{% else %}status-needs_input{% endif %}">
+          {{ 'Habilitada' if auto_settings.enabled else 'Deshabilitada' }}
+        </span>
+      </div>
+      <p class="muted small">Solo se ejecuta con envío live. Revisa ofertas remotas Easy Apply con score suficiente, pausas aleatorias y tope diario. Si falta un dato obligatorio, omite la oferta; no inventa respuestas.</p>
+      <form method="post" action="/settings/auto-apply" class="stack-sm">
+        <input type="hidden" name="_csrf" value="{{ csrf }}">
+        <label class="check-label">
+          <input type="checkbox" name="enabled" {% if auto_settings.enabled %}checked{% endif %}>
+          <span>Habilitar auto-postulación</span>
+        </label>
+        <div class="form-grid">
+          <label><span>Score mínimo</span><input type="number" name="min_score" min="0" max="100" value="{{ auto_settings.min_score }}"></label>
+          <label><span>Máximo por día</span><input type="number" name="daily_limit" min="0" max="50" value="{{ auto_settings.daily_limit }}"></label>
+          <label><span>Pausa mínima (s)</span><input type="number" name="delay_min_seconds" min="5" max="3600" value="{{ auto_settings.delay_min_seconds }}"></label>
+          <label><span>Pausa máxima (s)</span><input type="number" name="delay_max_seconds" min="5" max="7200" value="{{ auto_settings.delay_max_seconds }}"></label>
+        </div>
+        <label class="check-label">
+          <input type="checkbox" name="remote_only" {% if auto_settings.remote_only %}checked{% endif %}>
+          <span>Solo trabajos remotos</span>
+        </label>
+        <button class="button button-primary" type="submit">Guardar auto-postulación</button>
+      </form>
+      <p class="muted small">Enviadas hoy: {{ submitted_today }}. La configuración se guarda en la base local y el worker la lee en la próxima tarea.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <p class="eyebrow">Consumo</p>
+          <h2>Gemini hoy</h2>
+        </div>
+      </div>
+      <dl class="data-list">
+        <dt>Llamadas</dt><dd>{{ llm_usage.calls|default(0) }}</dd>
+        <dt>Tokens entrada</dt><dd>{{ llm_usage.input_tokens|default(0) }}</dd>
+        <dt>Tokens salida</dt><dd>{{ llm_usage.output_tokens|default(0) }}</dd>
+        <dt>Modelo</dt><dd>{{ llm_usage.model|default(settings.gemini_model) }}</dd>
+      </dl>
+      <p class="muted small">La extracción de ofertas usa reglas locales por defecto. Gemini se reserva para el CV y para tareas que lo necesiten.</p>
+    </section>
+
     <section class="panel">
       <div class="panel-head"><h2>Qué hace y qué no hace</h2></div>
       <ul class="plain-list">

@@ -60,6 +60,14 @@ No hay dos navegadores a la vez:
 
 Limitación conocida: si el worker se reinicia entre preparar y enviar, la sesión de revisión se pierde y hay que volver a preparar. El sistema lo informa.
 
+## Auto-postulación
+
+La tarea `auto_apply` selecciona ofertas Easy Apply remotas con score suficiente, las prepara y las envía en secuencia. Usa el mismo `prepare`/`submit` que el flujo manual, con pausas aleatorias y tope diario. No inventa respuestas: si una oferta requiere un dato desconocido, la omite. La configuración vive en `setting` y se edita desde el panel.
+
+## Proceso en vivo
+
+El worker escribe una captura del navegador en `artifacts/live-<application_id>.png` cada dos segundos mientras una preparación está abierta. El panel lee esa captura y sus metadatos, y la muestra embebida en **Proceso**. No hay streaming de video ni WebSocket: es una captura periódica local, suficiente para ver el estado real del navegador.
+
 ## Cola
 
 `automation_run` es la cola. Estados: `queued`, `running`, `done`, `failed`.

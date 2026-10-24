@@ -19,7 +19,16 @@ def test_health(client: TestClient) -> None:
 
 
 def test_main_pages_render(client: TestClient) -> None:
-    for path in ("/", "/jobs", "/profile", "/searches", "/activity", "/settings", "/applications"):
+    for path in (
+        "/",
+        "/jobs",
+        "/profile",
+        "/searches",
+        "/activity",
+        "/settings",
+        "/applications",
+        "/process",
+    ):
         response = client.get(path)
         assert response.status_code == 200, path
         assert "AutoPostul" in response.text
@@ -75,3 +84,12 @@ def test_post_without_csrf_is_rejected(client: TestClient) -> None:
     response = client.post("/actions/scan", data={})
 
     assert response.status_code == 403
+
+
+def test_process_live_partial_and_missing_image(client: TestClient) -> None:
+    response = client.get("/process/live")
+    assert response.status_code == 200
+    assert "Worker" in response.text
+
+    missing = client.get("/live/no-existe.png")
+    assert missing.status_code == 404

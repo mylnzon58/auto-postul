@@ -52,6 +52,10 @@ AutoPostul corre en la máquina del usuario, con su sesión de LinkedIn y su CV.
 | Logging | sin PII, auditoría local |
 | SSRF | MCP no abre URLs externas; la app no descarga apply URLs |
 
+## Auto-postulación
+
+El modo automático es opt-in y solo corre con `APPLY_LIVE_SUBMIT=true`. Aun así, envía sin revisión individual. Usalo solo con score alto, tope diario bajo, solo remoto y pausas largas. Revisá periódicamente la actividad y detené el worker si LinkedIn muestra señales de alerta.
+
 ## LinkedIn
 
 LinkedIn no autoriza oficialmente esta automatización. El diseño reduce el volumen y exige revisión, pero no elimina el riesgo de restricciones de cuenta. No usar para spam, scraping masivo ni evasión de controles.
